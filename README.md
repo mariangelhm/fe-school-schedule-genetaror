@@ -1,49 +1,49 @@
 # School Scheduler Platform
 
-School Scheduler is a microservice-oriented platform intended to generate and manage annual class schedules for a school. The current codebase focuses on the backend Spring Boot services and lays the groundwork for additional services and a React frontend that will be added in future iterations.
+School Scheduler es una plataforma basada en microservicios diseñada para generar y administrar los horarios escolares de todo un año académico. El repositorio ya incluye varios servicios Spring Boot funcionales, una configuración Maven multimódulo y la estructura preparada para sumar los servicios restantes descritos en el enunciado original.
 
-## Repository structure
+## Estructura del repositorio
 
 ```
 school-scheduler/
-├── config-service/        # Centralized configuration server (Spring Cloud Config style)
-├── subject-service/       # CRUD for subjects
-├── course-service/        # CRUD for courses and schedule placeholder endpoints
-├── teacher-service/       # CRUD for teachers and availability summaries
-├── holiday-service/       # CRUD for holidays
-├── pom.xml                # Maven parent aggregator
+├── config-service/        # Servicio de configuración centralizada
+├── subject-service/       # CRUD de asignaturas
+├── course-service/        # CRUD de cursos y endpoints de horario
+├── teacher-service/       # CRUD de docentes y resúmenes de carga
+├── holiday-service/       # CRUD de feriados
+├── pom.xml                # POM padre (aggregator)
 └── README.md
 ```
 
-> **Planned modules**: `gateway-service`, `eureka-server`, `auth-service`, `event-service`, `schedule-service`, and a `frontend/` React client are declared in the parent `pom.xml` but still pending implementation.
+> **Módulos planificados**: `gateway-service`, `eureka-server`, `auth-service`, `event-service`, `schedule-service` y el cliente `frontend/` en React están declarados en el `pom.xml` padre, pero aún no cuentan con implementación. El plan es incorporarlos en iteraciones posteriores.
 
-## Technology stack
+## Tecnologías principales
 
-- Java 17, Spring Boot 3.2
+- Java 17 y Spring Boot 3.2
 - Spring Data JPA + PostgreSQL
-- Spring Cloud (Config client hooks already in place)
-- Springdoc OpenAPI for Swagger documentation (`/swagger-ui/index.html`)
-- Dockerfiles for each microservice (Docker Compose file to be provided later)
+- Spring Cloud (preparado para Config Client)
+- Springdoc OpenAPI para documentación Swagger (`/swagger-ui/index.html`)
+- Dockerfiles individuales por microservicio (se añadirá `docker-compose.yml` cuando todos estén listos)
 
-## Prerequisites
+## Prerrequisitos
 
-Make sure the following tools are available locally:
+Instala o verifica que tienes disponibles en tu máquina de desarrollo:
 
-- **Java 17** (e.g., Temurin/OpenJDK 17)
+- **Java 17** (Temurin u OpenJDK)
 - **Maven 3.9+**
-- **Docker & Docker Compose** (to run PostgreSQL or containerize the services)
-- **PostgreSQL 15+** (if running the database locally without Docker)
+- **Docker y Docker Compose** (opcional pero recomendado)
+- **PostgreSQL 15+** (solo si no usarás Docker para la base de datos)
 
-## Database setup
+## Configuración de la base de datos
 
-All microservices expect a PostgreSQL database named `school_scheduler` reachable with the following defaults:
+Todos los microservicios esperan una base PostgreSQL llamada `school_scheduler` con las siguientes credenciales por defecto:
 
 - Host: `postgres`
-- Port: `5432`
-- Username: `scheduler`
-- Password: `scheduler`
+- Puerto: `5432`
+- Usuario: `scheduler`
+- Contraseña: `scheduler`
 
-When running services locally without Docker networking, override the datasource host to `localhost`. You can do this either by exporting environment variables before launching the service:
+Si ejecutas los servicios de manera local (sin Docker) cambia el host a `localhost`. Puedes hacerlo exportando variables de entorno antes de lanzar cada servicio:
 
 ```bash
 export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/school_scheduler
@@ -51,9 +51,9 @@ export SPRING_DATASOURCE_USERNAME=scheduler
 export SPRING_DATASOURCE_PASSWORD=scheduler
 ```
 
-Or by editing the `spring.datasource.url` property in the corresponding `application.yml`.
+También puedes ajustar el `spring.datasource.url` directamente en `application.yml`.
 
-### Starting PostgreSQL with Docker
+### Levantar PostgreSQL con Docker
 
 ```bash
 docker network create school-scheduler-net || true
@@ -68,32 +68,32 @@ docker run \
   -d postgres:15
 ```
 
-Each Spring Boot container can then join the same network (see the Docker instructions below).
+Una vez levantada la base, cada microservicio puede conectarse utilizando esa red (`school-scheduler-net`) para resolver el host `postgres`.
 
-## Building the project
+## Compilación del proyecto
 
-From the repository root:
+Desde la raíz del repositorio:
 
 ```bash
 mvn clean install
 ```
 
-This command compiles and packages each available service. You can also build a specific module:
+El comando compila y empaqueta cada módulo disponible. Si necesitas construir un servicio específico:
 
 ```bash
 mvn clean package -pl subject-service -am
 ```
 
-## Running the microservices (development mode)
+## Ejecución de los microservicios (modo desarrollo)
 
-Each service can be executed with `spring-boot:run`. Always start the **Config Service** first so that other services can fetch shared properties.
+Ejecuta cada servicio con `mvn spring-boot:run`. **Importante**: inicia primero el **Config Service** para que el resto pueda leer la configuración centralizada.
 
 1. **Config Service**
    ```bash
    cd config-service
    mvn spring-boot:run
    ```
-   - Port: `8888`
+   - Puerto: `8888`
    - Swagger UI: `http://localhost:8888/swagger-ui/index.html`
 
 2. **Subject Service**
@@ -101,7 +101,7 @@ Each service can be executed with `spring-boot:run`. Always start the **Config S
    cd subject-service
    mvn spring-boot:run
    ```
-   - Port: `8082`
+   - Puerto: `8082`
    - Swagger UI: `http://localhost:8082/swagger-ui/index.html`
 
 3. **Course Service**
@@ -109,7 +109,7 @@ Each service can be executed with `spring-boot:run`. Always start the **Config S
    cd course-service
    mvn spring-boot:run
    ```
-   - Port: `8083`
+   - Puerto: `8083`
    - Swagger UI: `http://localhost:8083/swagger-ui/index.html`
 
 4. **Teacher Service**
@@ -117,7 +117,7 @@ Each service can be executed with `spring-boot:run`. Always start the **Config S
    cd teacher-service
    mvn spring-boot:run
    ```
-   - Port: `8084`
+   - Puerto: `8084`
    - Swagger UI: `http://localhost:8084/swagger-ui/index.html`
 
 5. **Holiday Service**
@@ -125,14 +125,14 @@ Each service can be executed with `spring-boot:run`. Always start the **Config S
    cd holiday-service
    mvn spring-boot:run
    ```
-   - Port: `8085`
+   - Puerto: `8085`
    - Swagger UI: `http://localhost:8085/swagger-ui/index.html`
 
-> When running outside Docker, remember to override the datasource host as described earlier.
+> Si ejecutas los servicios fuera de Docker recuerda cambiar el host de la base a `localhost`, tal como se mencionó en la sección de configuración.
 
-## Running services with Docker
+## Ejecución con Docker
 
-Each microservice already includes a simple `Dockerfile`. After building the JAR (`mvn clean package`), you can build and run the container, making sure to attach it to the `school-scheduler-net` network so that it can reach PostgreSQL at the `postgres` hostname.
+Cada microservicio ya cuenta con un `Dockerfile`. Luego de generar el JAR (`mvn clean package`), construye la imagen y ejecútala conectándola a la red `school-scheduler-net`.
 
 ```bash
 cd subject-service
@@ -148,62 +148,27 @@ docker run --rm \
   schoolscheduler/subject-service
 ```
 
-Repeat the same pattern for the other services, adjusting exposed ports as needed. A consolidated `docker-compose.yml` will be added once all services are available.
+Repite el proceso para los demás servicios ajustando el puerto expuesto. Cuando todos los microservicios estén listos se añadirá un `docker-compose.yml` que automatice su despliegue.
 
-## Service overview
+## Resumen de servicios actuales
 
-| Service           | Purpose                                           | Key endpoints |
-|-------------------|---------------------------------------------------|----------------|
-| Config Service    | Stores editable global configuration properties.  | `GET/PUT /api/config` |
-| Subject Service   | Manages subjects (name, level, weekly blocks, etc.) | `GET /api/subjects`, `POST /api/subjects` |
-| Course Service    | Manages courses and exposes placeholder schedule endpoints. | `GET /api/courses`, `GET /api/courses/{id}/schedule` |
-| Teacher Service   | Manages teachers and provides assignment summaries. | `GET /api/teachers`, `GET /api/teachers/{id}/summary` |
-| Holiday Service   | Manages holidays that affect scheduling.          | `GET /api/holidays`, `POST /api/holidays` |
+| Servicio         | Propósito                                              | Endpoints clave |
+|------------------|---------------------------------------------------------|-----------------|
+| Config Service    | Gestiona propiedades globales editables.               | `GET/PUT /api/config` |
+| Subject Service   | Administra asignaturas (nombre, nivel, bloques, etc.). | `GET /api/subjects`, `POST /api/subjects` |
+| Course Service    | Administra cursos y expone endpoints de horario.       | `GET /api/courses`, `GET /api/courses/{id}/schedule` |
+| Teacher Service   | Administra docentes y entrega resúmenes de carga.      | `GET /api/teachers`, `GET /api/teachers/{id}/summary` |
+| Holiday Service   | Registra feriados oficiales.                            | `GET /api/holidays`, `POST /api/holidays` |
 
-All services expose comprehensive OpenAPI specs at `/v3/api-docs` and Swagger UI at `/swagger-ui/index.html`.
+## Próximos pasos
 
-## Example requests
+- Incorporar `auth-service`, `gateway-service`, `schedule-service`, `event-service` y `eureka-server`.
+- Definir `docker-compose.yml` con todos los contenedores, incluyendo PostgreSQL y Zipkin.
+- Añadir la aplicación `frontend/` en React + Vite.
+- Implementar estrategia de mensajería (RabbitMQ) y trazabilidad (Spring Sleuth + Zipkin).
+- Escribir pruebas unitarias y de integración para cada servicio.
 
-```bash
-# List all subjects
-curl http://localhost:8082/api/subjects
+## Contribuciones
 
-# Create a new teacher
-curl -X POST http://localhost:8084/api/teachers \
-  -H 'Content-Type: application/json' \
-  -d '{
-        "name": "Jane Doe",
-        "contractType": "FULL",
-        "weeklyHours": 30,
-        "availableBlocks": ["MONDAY_1", "MONDAY_2"],
-        "subjects": [1, 2]
-      }'
-```
+Las contribuciones son bienvenidas. Abre un issue describiendo la mejora o el bug antes de crear un pull request. Procura seguir las convenciones de código establecidas y añadir pruebas cuando apliquen.
 
-Refer to each service's DTO classes for the expected payloads.
-
-## Testing
-
-Automated tests are not yet implemented. The standard Spring Boot test lifecycle can be triggered with:
-
-```bash
-mvn test
-```
-
-## Next steps / roadmap
-
-- Implement the remaining microservices (auth, schedule, events, gateway, Eureka).
-- Provide Docker Compose orchestration for the full stack (including PostgreSQL and RabbitMQ).
-- Add seed data scripts and automated database migrations.
-- Deliver the React + Vite frontend client.
-- Add CI pipelines and automated tests (JUnit on the backend, Jest/React Testing Library on the frontend).
-
-## Contributing
-
-1. Fork the repository and create a feature branch.
-2. Commit descriptive changes and open a Pull Request.
-3. Ensure services build locally before submitting changes.
-
-## License
-
-This project is licensed under the Apache 2.0 License (see individual module configurations).
