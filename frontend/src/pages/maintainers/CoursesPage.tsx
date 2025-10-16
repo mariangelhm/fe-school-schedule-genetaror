@@ -1,21 +1,10 @@
 import { FormEvent, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
+import { useSchedulerDataStore, type CourseData } from '../../store/useSchedulerData'
 
-interface Course {
-  id: number
-  name: string
-  level: string
-  headTeacher: string
-  students: number
-}
+type CourseDraft = Omit<CourseData, 'id'>
 
-const initialCourses: Course[] = [
-  { id: 1, name: '1° Básico A', level: '1° Básico', headTeacher: 'María López', students: 32 },
-  { id: 2, name: '2° Básico B', level: '2° Básico', headTeacher: 'Carlos Rivas', students: 29 }
-]
-
-const emptyCourse: Course = {
-  id: 0,
+const emptyCourse: CourseDraft = {
   name: '',
   level: '',
   headTeacher: '',
@@ -23,8 +12,10 @@ const emptyCourse: Course = {
 }
 
 export function CoursesPage() {
-  const [courses, setCourses] = useState<Course[]>(initialCourses)
-  const [draft, setDraft] = useState<Course>({ ...emptyCourse })
+  const courses = useSchedulerDataStore((state) => state.courses)
+  const addCourse = useSchedulerDataStore((state) => state.addCourse)
+  const removeCourse = useSchedulerDataStore((state) => state.removeCourse)
+  const [draft, setDraft] = useState<CourseDraft>({ ...emptyCourse })
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -32,17 +23,12 @@ export function CoursesPage() {
       return
     }
 
-    const newCourse: Course = {
-      ...draft,
-      id: Date.now()
-    }
-
-    setCourses((current) => [newCourse, ...current])
+    addCourse(draft)
     setDraft({ ...emptyCourse })
   }
 
   const handleDelete = (id: number) => {
-    setCourses((current) => current.filter((course) => course.id !== id))
+    removeCourse(id)
   }
 
   return (

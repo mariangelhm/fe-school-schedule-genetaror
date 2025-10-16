@@ -1,25 +1,10 @@
 import { FormEvent, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
+import { useSchedulerDataStore, type SubjectData, type SubjectType } from '../../store/useSchedulerData'
 
-type SubjectType = 'Normal' | 'Especial'
+type SubjectDraft = Omit<SubjectData, 'id'>
 
-interface Subject {
-  id: number
-  name: string
-  level: string
-  weeklyBlocks: number
-  type: SubjectType
-  color: string
-}
-
-const initialSubjects: Subject[] = [
-  { id: 1, name: 'Lenguaje', level: '1° Básico', weeklyBlocks: 6, type: 'Normal', color: '#2563eb' },
-  { id: 2, name: 'Matemática', level: '1° Básico', weeklyBlocks: 5, type: 'Normal', color: '#9333ea' },
-  { id: 3, name: 'Música', level: 'General', weeklyBlocks: 2, type: 'Especial', color: '#eab308' }
-]
-
-const emptySubject: Subject = {
-  id: 0,
+const emptySubject: SubjectDraft = {
   name: '',
   level: '',
   weeklyBlocks: 4,
@@ -28,8 +13,10 @@ const emptySubject: Subject = {
 }
 
 export function SubjectsPage() {
-  const [subjects, setSubjects] = useState<Subject[]>(initialSubjects)
-  const [draft, setDraft] = useState<Subject>({ ...emptySubject })
+  const subjects = useSchedulerDataStore((state) => state.subjects)
+  const addSubject = useSchedulerDataStore((state) => state.addSubject)
+  const removeSubject = useSchedulerDataStore((state) => state.removeSubject)
+  const [draft, setDraft] = useState<SubjectDraft>({ ...emptySubject })
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -37,17 +24,12 @@ export function SubjectsPage() {
       return
     }
 
-    const newSubject: Subject = {
-      ...draft,
-      id: Date.now()
-    }
-
-    setSubjects((current) => [newSubject, ...current])
+    addSubject(draft)
     setDraft({ ...emptySubject })
   }
 
   const handleDelete = (id: number) => {
-    setSubjects((current) => current.filter((subject) => subject.id !== id))
+    removeSubject(id)
   }
 
   return (

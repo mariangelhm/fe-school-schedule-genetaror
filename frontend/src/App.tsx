@@ -20,7 +20,9 @@ export default function App() {
     initialData: {
       schoolName: 'School Scheduler',
       primaryColor: '#2563eb',
-      theme: 'dark'
+      theme: 'dark',
+      blockDuration: 45,
+      dayStart: '08:00'
     }
   })
 

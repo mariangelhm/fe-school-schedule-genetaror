@@ -1,11 +1,6 @@
 import { FormEvent, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
-
-interface Holiday {
-  id: number
-  date: string
-  description: string
-}
+import { useSchedulerDataStore, type HolidayData } from '../../store/useSchedulerData'
 
 const today = new Date()
 
@@ -13,20 +8,16 @@ function formatDateForInput(date: Date) {
   return date.toISOString().split('T')[0]
 }
 
-const initialHolidays: Holiday[] = [
-  { id: 1, date: formatDateForInput(new Date(today.getFullYear(), 4, 1)), description: 'Día del trabajador' },
-  { id: 2, date: formatDateForInput(new Date(today.getFullYear(), 8, 18)), description: 'Fiestas Patrias' }
-]
-
-const emptyHoliday: Holiday = {
-  id: 0,
+const emptyHoliday: Omit<HolidayData, 'id'> = {
   date: formatDateForInput(today),
   description: ''
 }
 
 export function HolidaysPage() {
-  const [holidays, setHolidays] = useState<Holiday[]>(initialHolidays)
-  const [draft, setDraft] = useState<Holiday>({ ...emptyHoliday })
+  const holidays = useSchedulerDataStore((state) => state.holidays)
+  const addHoliday = useSchedulerDataStore((state) => state.addHoliday)
+  const removeHoliday = useSchedulerDataStore((state) => state.removeHoliday)
+  const [draft, setDraft] = useState<Omit<HolidayData, 'id'>>({ ...emptyHoliday })
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -34,17 +25,12 @@ export function HolidaysPage() {
       return
     }
 
-    const newHoliday: Holiday = {
-      ...draft,
-      id: Date.now()
-    }
-
-    setHolidays((current) => [newHoliday, ...current].sort((a, b) => a.date.localeCompare(b.date)))
+    addHoliday(draft)
     setDraft({ ...emptyHoliday })
   }
 
   const handleDelete = (id: number) => {
-    setHolidays((current) => current.filter((holiday) => holiday.id !== id))
+    removeHoliday(id)
   }
 
   return (

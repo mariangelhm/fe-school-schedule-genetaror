@@ -1,38 +1,10 @@
-import { FormEvent, useState } from 'react'
+import { FormEvent, useMemo, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
+import { useSchedulerDataStore, type ContractType, type TeacherData } from '../../store/useSchedulerData'
 
-type ContractType = 'Completo' | 'Parcial'
+type TeacherDraft = Omit<TeacherData, 'id' | 'subjects'> & { subjects: string }
 
-interface Teacher {
-  id: number
-  name: string
-  contractType: ContractType
-  subjects: string
-  weeklyHours: number
-  availableBlocks: string
-}
-
-const initialTeachers: Teacher[] = [
-  {
-    id: 1,
-    name: 'Ana Torres',
-    contractType: 'Completo',
-    subjects: 'Lenguaje, Historia',
-    weeklyHours: 38,
-    availableBlocks: 'Lun-Vie 08:00-16:00'
-  },
-  {
-    id: 2,
-    name: 'Luis Gómez',
-    contractType: 'Parcial',
-    subjects: 'Música',
-    weeklyHours: 18,
-    availableBlocks: 'Mar-Jue 11:00-17:00'
-  }
-]
-
-const emptyTeacher: Teacher = {
-  id: 0,
+const emptyTeacher: TeacherDraft = {
   name: '',
   contractType: 'Completo',
   subjects: '',
@@ -41,8 +13,19 @@ const emptyTeacher: Teacher = {
 }
 
 export function TeachersPage() {
-  const [teachers, setTeachers] = useState<Teacher[]>(initialTeachers)
-  const [draft, setDraft] = useState<Teacher>({ ...emptyTeacher })
+  const teachers = useSchedulerDataStore((state) => state.teachers)
+  const addTeacher = useSchedulerDataStore((state) => state.addTeacher)
+  const removeTeacher = useSchedulerDataStore((state) => state.removeTeacher)
+  const [draft, setDraft] = useState<TeacherDraft>({ ...emptyTeacher })
+
+  const formattedTeachers = useMemo(
+    () =>
+      teachers.map((teacher) => ({
+        ...teacher,
+        subjectsLabel: teacher.subjects.join(', ')
+      })),
+    [teachers]
+  )
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -50,17 +33,18 @@ export function TeachersPage() {
       return
     }
 
-    const newTeacher: Teacher = {
-      ...draft,
-      id: Date.now()
-    }
-
-    setTeachers((current) => [newTeacher, ...current])
+    addTeacher({
+      name: draft.name,
+      contractType: draft.contractType,
+      subjects: draft.subjects.split(',').map((subject) => subject.trim()).filter(Boolean),
+      weeklyHours: draft.weeklyHours,
+      availableBlocks: draft.availableBlocks
+    })
     setDraft({ ...emptyTeacher })
   }
 
   const handleDelete = (id: number) => {
-    setTeachers((current) => current.filter((teacher) => teacher.id !== id))
+    removeTeacher(id)
   }
 
   return (
@@ -82,11 +66,11 @@ export function TeachersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {teachers.map((teacher) => (
+              {formattedTeachers.map((teacher) => (
                 <tr key={teacher.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
                   <td className="px-4 py-3 font-medium">{teacher.name}</td>
                   <td className="px-4 py-3">{teacher.contractType}</td>
-                  <td className="px-4 py-3">{teacher.subjects}</td>
+                  <td className="px-4 py-3">{teacher.subjectsLabel}</td>
                   <td className="px-4 py-3">{teacher.weeklyHours}</td>
                   <td className="px-4 py-3">{teacher.availableBlocks}</td>
                   <td className="px-4 py-3 text-right">
@@ -100,7 +84,7 @@ export function TeachersPage() {
                   </td>
                 </tr>
               ))}
-              {teachers.length === 0 && (
+              {formattedTeachers.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay profesores registrados.

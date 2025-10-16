@@ -7,6 +7,8 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 - SPA desarrollada con React 18, Vite y TailwindCSS.
 - Tipado completo en TypeScript y linting con ESLint + Prettier.
 - Gestión de estado ligero con Zustand y consultas asíncronas con React Query.
+- Mantenedores con datos persistidos en el navegador para trabajar sin backend durante las demos.
+- Previsualización de horarios que respeta configuraciones globales antes de confirmar la generación real.
 - Ruteo con `react-router-dom` y componentes reutilizables para paneles, mantenedores y vistas de calendario.
 - Integración prevista con un gateway/API externa protegida con JWT.
 
@@ -62,7 +64,7 @@ frontend/
 │   ├── components/      # Componentes UI reutilizables (navegación, paneles, formularios)
 │   ├── pages/           # Páginas principales (Dashboard, Configuración, Horario)
 │   ├── services/        # Clientes HTTP para los microservicios externos
-│   ├── store/           # (Opcional) hooks Zustand para estado compartido
+│   ├── store/           # Hooks Zustand con datos demo persistidos en localStorage
 │   ├── styles.css       # Estilos globales con Tailwind + utilidades personalizadas
 │   └── main.tsx         # Punto de entrada de la aplicación
 ├── package.json

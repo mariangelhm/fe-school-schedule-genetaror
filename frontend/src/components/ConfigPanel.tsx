@@ -11,13 +11,15 @@ export function ConfigPanel() {
       schoolName: 'School Scheduler',
       primaryColor: '#2563eb',
       blockDuration: 45,
-      theme: 'dark'
+      theme: 'dark',
+      dayStart: '08:00'
     }
   })
   const [color, setColor] = useState('#2563eb')
   const [schoolName, setSchoolName] = useState('School Scheduler')
   const [blockDuration, setBlockDuration] = useState(45)
   const [theme, setTheme] = useState<'light' | 'dark'>('dark')
+  const [dayStart, setDayStart] = useState('08:00')
 
   const mutation = useMutation(updateConfig, {
     onSuccess: (updated) => {
@@ -31,6 +33,7 @@ export function ConfigPanel() {
       setSchoolName(data.schoolName ?? 'School Scheduler')
       setBlockDuration(data.blockDuration ?? 45)
       setTheme(data.theme ?? 'dark')
+      setDayStart(data.dayStart ?? '08:00')
     }
   }, [data])
 
@@ -73,6 +76,15 @@ export function ConfigPanel() {
           />
         </label>
         <label className="grid gap-2">
+          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Hora de inicio de la jornada</span>
+          <input
+            type="time"
+            value={dayStart}
+            onChange={(event) => setDayStart(event.target.value)}
+            className="w-40 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+          />
+        </label>
+        <label className="grid gap-2">
           <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Tema de la aplicación</span>
           <select
             value={theme}
@@ -89,7 +101,8 @@ export function ConfigPanel() {
               schoolName,
               primaryColor: color,
               blockDuration,
-              theme
+              theme,
+              dayStart
             })
           }
           className="mt-4 w-fit rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"

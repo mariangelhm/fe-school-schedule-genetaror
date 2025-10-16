@@ -1,12 +1,6 @@
 import { FormEvent, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
-
-interface SchoolEvent {
-  id: number
-  date: string
-  description: string
-  noClasses: boolean
-}
+import { useSchedulerDataStore, type EventData } from '../../store/useSchedulerData'
 
 const today = new Date()
 
@@ -14,21 +8,17 @@ function formatDateForInput(date: Date) {
   return date.toISOString().split('T')[0]
 }
 
-const initialEvents: SchoolEvent[] = [
-  { id: 1, date: formatDateForInput(new Date(today.getFullYear(), 2, 15)), description: 'Jornada docente', noClasses: true },
-  { id: 2, date: formatDateForInput(new Date(today.getFullYear(), 9, 5)), description: 'Simulacro de emergencia', noClasses: false }
-]
-
-const emptyEvent: SchoolEvent = {
-  id: 0,
+const emptyEvent: Omit<EventData, 'id'> = {
   date: formatDateForInput(today),
   description: '',
   noClasses: false
 }
 
 export function EventsPage() {
-  const [events, setEvents] = useState<SchoolEvent[]>(initialEvents)
-  const [draft, setDraft] = useState<SchoolEvent>({ ...emptyEvent })
+  const events = useSchedulerDataStore((state) => state.events)
+  const addEvent = useSchedulerDataStore((state) => state.addEvent)
+  const removeEvent = useSchedulerDataStore((state) => state.removeEvent)
+  const [draft, setDraft] = useState<Omit<EventData, 'id'>>({ ...emptyEvent })
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -36,17 +26,12 @@ export function EventsPage() {
       return
     }
 
-    const newEvent: SchoolEvent = {
-      ...draft,
-      id: Date.now()
-    }
-
-    setEvents((current) => [newEvent, ...current].sort((a, b) => a.date.localeCompare(b.date)))
+    addEvent(draft)
     setDraft({ ...emptyEvent })
   }
 
   const handleDelete = (id: number) => {
-    setEvents((current) => current.filter((schoolEvent) => schoolEvent.id !== id))
+    removeEvent(id)
   }
 
   return (
