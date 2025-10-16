@@ -50,6 +50,9 @@ Desde la carpeta `frontend/` puedes ejecutar:
 - `npm run preview`: sirve localmente la build optimizada para verificación final.
 - `npm run lint`: ejecuta ESLint para validar estilo y reglas de TypeScript/React.
 
+> El servidor de desarrollo está configurado para escuchar en `0.0.0.0`, por lo que podrás acceder desde tu máquina anfitriona
+> aunque ejecutes el proyecto dentro de Docker, WSL o un contenedor de desarrollo remoto.
+
 ## Estructura del proyecto
 
 ```
