@@ -16,8 +16,10 @@ const emptyHoliday: Omit<HolidayData, 'id'> = {
 export function HolidaysPage() {
   const holidays = useSchedulerDataStore((state) => state.holidays)
   const addHoliday = useSchedulerDataStore((state) => state.addHoliday)
+  const updateHoliday = useSchedulerDataStore((state) => state.updateHoliday)
   const removeHoliday = useSchedulerDataStore((state) => state.removeHoliday)
   const [draft, setDraft] = useState<Omit<HolidayData, 'id'>>({ ...emptyHoliday })
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -25,12 +27,31 @@ export function HolidaysPage() {
       return
     }
 
-    addHoliday(draft)
+    if (editingId) {
+      updateHoliday(editingId, draft)
+    } else {
+      addHoliday(draft)
+    }
+
+    setDraft({ ...emptyHoliday })
+    setEditingId(null)
+  }
+
+  const handleEdit = (holiday: HolidayData) => {
+    setEditingId(holiday.id)
+    setDraft({ date: holiday.date, description: holiday.description })
+  }
+
+  const handleCancel = () => {
+    setEditingId(null)
     setDraft({ ...emptyHoliday })
   }
 
   const handleDelete = (id: number) => {
     removeHoliday(id)
+    if (editingId === id) {
+      handleCancel()
+    }
   }
 
   return (
@@ -54,13 +75,22 @@ export function HolidaysPage() {
                   <td className="px-4 py-3 font-medium">{holiday.date}</td>
                   <td className="px-4 py-3">{holiday.description}</td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      className="text-sm text-rose-500 hover:text-rose-600"
-                      type="button"
-                      onClick={() => handleDelete(holiday.id)}
-                    >
-                      Eliminar
-                    </button>
+                    <div className="flex justify-end gap-3">
+                      <button
+                        className="text-sm text-slate-500 transition hover:text-brand"
+                        type="button"
+                        onClick={() => handleEdit(holiday)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="text-sm text-rose-500 transition hover:text-rose-600"
+                        type="button"
+                        onClick={() => handleDelete(holiday.id)}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -78,7 +108,7 @@ export function HolidaysPage() {
           onSubmit={handleSubmit}
           className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-800/60"
         >
-          <h2 className="text-lg font-semibold">Nuevo feriado</h2>
+          <h2 className="text-lg font-semibold">{editingId ? 'Editar feriado' : 'Nuevo feriado'}</h2>
           <label className="grid gap-2 text-sm">
             <span className="font-medium text-slate-600 dark:text-slate-300">Fecha</span>
             <input
@@ -97,9 +127,16 @@ export function HolidaysPage() {
               required
             />
           </label>
-          <button type="submit" className="rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white">
-            Guardar feriado
-          </button>
+          <div className="flex items-center gap-3">
+            <button type="submit" className="rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white">
+              {editingId ? 'Actualizar feriado' : 'Guardar feriado'}
+            </button>
+            {editingId && (
+              <button type="button" className="text-sm text-slate-500 hover:text-slate-700" onClick={handleCancel}>
+                Cancelar
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </MaintenanceLayout>

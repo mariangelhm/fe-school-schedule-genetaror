@@ -17,8 +17,10 @@ const emptyEvent: Omit<EventData, 'id'> = {
 export function EventsPage() {
   const events = useSchedulerDataStore((state) => state.events)
   const addEvent = useSchedulerDataStore((state) => state.addEvent)
+  const updateEvent = useSchedulerDataStore((state) => state.updateEvent)
   const removeEvent = useSchedulerDataStore((state) => state.removeEvent)
   const [draft, setDraft] = useState<Omit<EventData, 'id'>>({ ...emptyEvent })
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -26,12 +28,34 @@ export function EventsPage() {
       return
     }
 
-    addEvent(draft)
+    if (editingId) {
+      updateEvent(editingId, draft)
+    } else {
+      addEvent(draft)
+    }
+    setDraft({ ...emptyEvent })
+    setEditingId(null)
+  }
+
+  const handleEdit = (schoolEvent: EventData) => {
+    setEditingId(schoolEvent.id)
+    setDraft({
+      date: schoolEvent.date,
+      description: schoolEvent.description,
+      noClasses: schoolEvent.noClasses
+    })
+  }
+
+  const handleCancel = () => {
+    setEditingId(null)
     setDraft({ ...emptyEvent })
   }
 
   const handleDelete = (id: number) => {
     removeEvent(id)
+    if (editingId === id) {
+      handleCancel()
+    }
   }
 
   return (
@@ -67,13 +91,22 @@ export function EventsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <button
-                      className="text-sm text-rose-500 hover:text-rose-600"
-                      type="button"
-                      onClick={() => handleDelete(schoolEvent.id)}
-                    >
-                      Eliminar
-                    </button>
+                    <div className="flex justify-end gap-3">
+                      <button
+                        className="text-sm text-slate-500 transition hover:text-brand"
+                        type="button"
+                        onClick={() => handleEdit(schoolEvent)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="text-sm text-rose-500 transition hover:text-rose-600"
+                        type="button"
+                        onClick={() => handleDelete(schoolEvent.id)}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -91,7 +124,7 @@ export function EventsPage() {
           onSubmit={handleSubmit}
           className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-800/60"
         >
-          <h2 className="text-lg font-semibold">Nueva actividad</h2>
+          <h2 className="text-lg font-semibold">{editingId ? 'Editar actividad' : 'Nueva actividad'}</h2>
           <label className="grid gap-2 text-sm">
             <span className="font-medium text-slate-600 dark:text-slate-300">Fecha</span>
             <input
@@ -119,9 +152,16 @@ export function EventsPage() {
             />
             El evento suspende clases
           </label>
-          <button type="submit" className="rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white">
-            Guardar evento
-          </button>
+          <div className="flex items-center gap-3">
+            <button type="submit" className="rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white">
+              {editingId ? 'Actualizar evento' : 'Guardar evento'}
+            </button>
+            {editingId && (
+              <button type="button" className="text-sm text-slate-500 hover:text-slate-700" onClick={handleCancel}>
+                Cancelar
+              </button>
+            )}
+          </div>
         </form>
       </div>
     </MaintenanceLayout>

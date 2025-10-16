@@ -87,10 +87,20 @@ function normaliseName(value: string) {
   return value.trim().toLowerCase()
 }
 
-function resolveTeacher(subject: SubjectData, teachers: TeacherData[]) {
+function resolveTeacher(subject: SubjectData, teachers: TeacherData[], courseCycleId?: string) {
   const subjectName = normaliseName(subject.name)
-  const match = teachers.find((teacher) => teacher.subjects.map(normaliseName).includes(subjectName))
-  return match?.name ?? 'Sin profesor asignado'
+  const candidates = teachers.filter((teacher) => teacher.subjects.map(normaliseName).includes(subjectName))
+
+  if (courseCycleId) {
+    const cycleMatch = candidates.find(
+      (teacher) => teacher.cycles.length === 0 || teacher.cycles.includes(courseCycleId)
+    )
+    if (cycleMatch) {
+      return cycleMatch.name
+    }
+  }
+
+  return candidates[0]?.name ?? 'Sin profesor asignado'
 }
 
 function findCycleForLevel(level: string, cycles: CycleConfig[] = []) {
@@ -98,17 +108,48 @@ function findCycleForLevel(level: string, cycles: CycleConfig[] = []) {
   return cycles.find((cycle) => cycle.levels.map(normaliseName).includes(target))
 }
 
+function resolveCourseCycle(course: CourseData, cycles: CycleConfig[] = []) {
+  if (course.cycleId) {
+    const byId = cycles.find((cycle) => cycle.id === course.cycleId)
+    if (byId) {
+      return byId
+    }
+  }
+
+  const levelTokens = course.level
+    .split(',')
+    .map((token) => token.trim())
+    .filter(Boolean)
+
+  for (const token of levelTokens) {
+    const match = findCycleForLevel(token, cycles)
+    if (match) {
+      return match
+    }
+  }
+
+  return undefined
+}
+
+function getWeeklyBlocksForCycle(subject: SubjectData, cycleId?: string) {
+  if (!cycleId) {
+    return subject.cycleLoads.reduce((acc, load) => acc + load.weeklyBlocks, 0)
+  }
+  const entry = subject.cycleLoads.find((load) => load.cycleId === cycleId)
+  return entry?.weeklyBlocks ?? 0
+}
+
 function calculateDailyCapacity(
   course: CourseData,
   config: ConfigResponse,
   cycles: CycleConfig[]
-): { maxDailyBlocks: number; totalCapacity: number } {
+): { maxDailyBlocks: number; totalCapacity: number; cycleId?: string } {
   const blockDuration = config.blockDuration ?? 45
   const dayStart = config.dayStart ?? '08:00'
   const lunchStart = config.lunchStart
   const lunchDuration = Math.max(0, config.lunchDuration ?? 0)
 
-  const cycle = findCycleForLevel(course.level, cycles)
+  const cycle = resolveCourseCycle(course, cycles)
   const dayStartMinutes = timeToMinutes(dayStart)
   const fallbackEnd = dayStartMinutes + blockDuration * 8 + lunchDuration
   const dayEndMinutes = Math.max(dayStartMinutes + blockDuration, cycle ? timeToMinutes(cycle.endTime) : fallbackEnd)
@@ -125,45 +166,52 @@ function calculateDailyCapacity(
   const maxDailyBlocks = Math.max(1, Math.floor(availableMinutes / blockDuration))
   const totalCapacity = maxDailyBlocks * WORKING_DAYS.length
 
-  return { maxDailyBlocks, totalCapacity }
+  return { maxDailyBlocks, totalCapacity, cycleId: cycle?.id }
+}
+
+interface SubjectRequirement {
+  subject: SubjectData
+  weeklyBlocks: number
 }
 
 function distributeSessions(
   course: CourseData,
-  subjects: SubjectData[],
+  requirements: SubjectRequirement[],
   teachers: TeacherData[],
   days: readonly string[],
-  maxDailyBlocks: number
+  maxDailyBlocks: number,
+  courseCycleId?: string
 ): CourseGrid | { error: string } {
-  const applicableSubjects = subjects.filter(
-    (subject) => subject.level === course.level || subject.level.toLowerCase() === 'general'
-  )
-
-  if (applicableSubjects.length === 0) {
-    return { error: `El curso ${course.name} no tiene asignaturas asociadas a su nivel.` }
-  }
-
-  const totalRequiredBlocks = applicableSubjects.reduce((acc, subject) => acc + subject.weeklyBlocks, 0)
-  if (totalRequiredBlocks === 0) {
-    return { error: `El curso ${course.name} no tiene carga horaria configurada.` }
+  if (requirements.length === 0) {
+    return { error: `El curso ${course.name} no tiene asignaturas configuradas para su ciclo.` }
   }
 
   const daySessions: SlotCell[][] = days.map(() => [])
-  const normalSubjects = applicableSubjects.filter((subject) => subject.type === 'Normal')
-  const specialSubjects = applicableSubjects.filter((subject) => subject.type === 'Especial')
+  const normalSubjects = requirements.filter((item) => item.subject.type === 'Normal')
+  const specialSubjects = requirements.filter((item) => item.subject.type === 'Especial')
+
+  const dailyCounts = new Map<number, number[]>()
+  for (const requirement of requirements) {
+    dailyCounts.set(requirement.subject.id, Array.from({ length: days.length }, () => 0))
+  }
 
   let dayPointer = 0
 
-  const assignSubject = (subject: SubjectData, ensureTailPlacement: boolean) => {
-    const teacherName = resolveTeacher(subject, teachers)
+  const assignSubject = (requirement: SubjectRequirement, ensureTailPlacement: boolean) => {
+    const { subject, weeklyBlocks } = requirement
+    const teacherName = resolveTeacher(subject, teachers, courseCycleId)
+    const maxPerDay = Math.max(1, subject.maxDailyBlocks || 1)
+    const counts = dailyCounts.get(subject.id) ?? Array.from({ length: days.length }, () => 0)
+    dailyCounts.set(subject.id, counts)
+
     let allocated = 0
     let guard = 0
 
-    while (allocated < subject.weeklyBlocks && guard < 1000) {
+    while (allocated < weeklyBlocks && guard < 1000) {
       const dayIndex = dayPointer % days.length
       const day = daySessions[dayIndex]
 
-      if (day.length >= maxDailyBlocks) {
+      if (day.length >= maxDailyBlocks || counts[dayIndex] >= maxPerDay) {
         dayPointer++
         guard++
         continue
@@ -186,41 +234,47 @@ function distributeSessions(
       }
 
       day.push({ subject: subject.name, teacher: teacherName, color: subject.color })
+      counts[dayIndex] += 1
       allocated++
       dayPointer++
       guard++
     }
 
-    if (allocated < subject.weeklyBlocks) {
-      for (const day of daySessions) {
-        if (day.length >= maxDailyBlocks) {
-          continue
+    if (allocated < weeklyBlocks) {
+      daySessions.forEach((day, dayIndex) => {
+        if (allocated >= weeklyBlocks) {
+          return
         }
 
-        while (day.length < maxDailyBlocks && allocated < subject.weeklyBlocks) {
+        if (day.length >= maxDailyBlocks || counts[dayIndex] >= maxPerDay) {
+          return
+        }
+
+        while (
+          day.length < maxDailyBlocks &&
+          counts[dayIndex] < maxPerDay &&
+          allocated < weeklyBlocks
+        ) {
           day.push({ subject: subject.name, teacher: teacherName, color: subject.color })
+          counts[dayIndex] += 1
           allocated++
         }
-
-        if (allocated >= subject.weeklyBlocks) {
-          break
-        }
-      }
+      })
     }
 
-    if (allocated < subject.weeklyBlocks) {
+    if (allocated < weeklyBlocks) {
       throw new Error(`No hay bloques suficientes para asignar ${subject.name} en ${course.name}.`)
     }
   }
 
   try {
-    for (const subject of normalSubjects) {
-      assignSubject(subject, false)
+    for (const requirement of normalSubjects) {
+      assignSubject(requirement, false)
     }
 
     dayPointer = 0
-    for (const subject of specialSubjects) {
-      assignSubject(subject, true)
+    for (const requirement of specialSubjects) {
+      assignSubject(requirement, true)
     }
   } catch (error) {
     return {
@@ -425,11 +479,32 @@ export function buildSchedulePreview(input: BuildPreviewInput): { preview?: Sche
   const courseGrids: CourseGrid[] = []
 
   for (const course of workingCourses) {
-    const { maxDailyBlocks, totalCapacity } = calculateDailyCapacity(course, config, cycles)
-    const applicableSubjects = subjects.filter(
-      (subject) => subject.level === course.level || subject.level.toLowerCase() === 'general'
-    )
-    const totalRequiredBlocks = applicableSubjects.reduce((acc, subject) => acc + subject.weeklyBlocks, 0)
+    const { maxDailyBlocks, totalCapacity, cycleId } = calculateDailyCapacity(course, config, cycles)
+    const courseLevels = course.level
+      .split(',')
+      .map((value) => normaliseName(value))
+      .filter(Boolean)
+
+    const requirements: SubjectRequirement[] = subjects
+      .filter((subject) => {
+        const subjectLevels = subject.level
+          .split(',')
+          .map((value) => normaliseName(value))
+          .filter(Boolean)
+
+        if (subjectLevels.includes('general')) {
+          return true
+        }
+
+        return subjectLevels.some((level) => courseLevels.includes(level))
+      })
+      .map((subject) => ({
+        subject,
+        weeklyBlocks: getWeeklyBlocksForCycle(subject, cycleId)
+      }))
+      .filter((requirement) => requirement.weeklyBlocks > 0)
+
+    const totalRequiredBlocks = requirements.reduce((acc, requirement) => acc + requirement.weeklyBlocks, 0)
 
     if (totalRequiredBlocks > totalCapacity) {
       return {
@@ -437,7 +512,7 @@ export function buildSchedulePreview(input: BuildPreviewInput): { preview?: Sche
       }
     }
 
-    const grid = distributeSessions(course, subjects, teachers, WORKING_DAYS, maxDailyBlocks)
+    const grid = distributeSessions(course, requirements, teachers, WORKING_DAYS, maxDailyBlocks, cycleId)
     if ('error' in grid) {
       return { error: grid.error }
     }
