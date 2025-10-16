@@ -1,174 +1,90 @@
-# School Scheduler Platform
+# School Scheduler Frontend
 
-School Scheduler es una plataforma basada en microservicios diseñada para generar y administrar los horarios escolares de todo un año académico. El repositorio ya incluye varios servicios Spring Boot funcionales, una configuración Maven multimódulo y la estructura preparada para sumar los servicios restantes descritos en el enunciado original.
+Este repositorio contiene **exclusivamente** el cliente web de School Scheduler, una aplicación React + Vite + TypeScript diseñada para consumir los microservicios del ecosistema School Scheduler (backend mantenido en un proyecto aparte).
 
-## Estructura del repositorio
+## Características principales
 
-```
-school-scheduler/
-├── config-service/        # Servicio de configuración centralizada
-├── subject-service/       # CRUD de asignaturas
-├── course-service/        # CRUD de cursos y endpoints de horario
-├── teacher-service/       # CRUD de docentes y resúmenes de carga
-├── holiday-service/       # CRUD de feriados
-├── pom.xml                # POM padre (aggregator)
-└── README.md
-```
+- SPA desarrollada con React 18, Vite y TailwindCSS.
+- Tipado completo en TypeScript y linting con ESLint + Prettier.
+- Gestión de estado ligero con Zustand y consultas asíncronas con React Query.
+- Ruteo con `react-router-dom` y componentes reutilizables para paneles, mantenedores y vistas de calendario.
+- Integración prevista con un gateway/API externa protegida con JWT.
 
-> **Módulos planificados**: `gateway-service`, `eureka-server`, `auth-service`, `event-service`, `schedule-service` y el cliente `frontend/` en React están declarados en el `pom.xml` padre, pero aún no cuentan con implementación. El plan es incorporarlos en iteraciones posteriores.
+## Requisitos previos
 
-## Tecnologías principales
+- **Node.js 20+**
+- **npm** (viene con Node) o **pnpm** si prefieres un gestor alternativo
 
-- Java 17 y Spring Boot 3.2
-- Spring Data JPA + PostgreSQL
-- Spring Cloud (preparado para Config Client)
-- Springdoc OpenAPI para documentación Swagger (`/swagger-ui/index.html`)
-- Dockerfiles individuales por microservicio (se añadirá `docker-compose.yml` cuando todos estén listos)
+> **Nota:** No necesitas Java, Maven ni Docker para trabajar con este repositorio. Todos los servicios backend viven en otro proyecto y se consumen vía HTTP.
 
-## Prerrequisitos
+## Configuración inicial
 
-Instala o verifica que tienes disponibles en tu máquina de desarrollo:
-
-- **Java 17** (Temurin u OpenJDK)
-- **Maven 3.9+**
-- **Docker y Docker Compose** (opcional pero recomendado)
-- **PostgreSQL 15+** (solo si no usarás Docker para la base de datos)
-
-## Configuración de la base de datos
-
-Todos los microservicios esperan una base PostgreSQL llamada `school_scheduler` con las siguientes credenciales por defecto:
-
-- Host: `postgres`
-- Puerto: `5432`
-- Usuario: `scheduler`
-- Contraseña: `scheduler`
-
-Si ejecutas los servicios de manera local (sin Docker) cambia el host a `localhost`. Puedes hacerlo exportando variables de entorno antes de lanzar cada servicio:
-
-```bash
-export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/school_scheduler
-export SPRING_DATASOURCE_USERNAME=scheduler
-export SPRING_DATASOURCE_PASSWORD=scheduler
-```
-
-También puedes ajustar el `spring.datasource.url` directamente en `application.yml`.
-
-### Levantar PostgreSQL con Docker
-
-```bash
-docker network create school-scheduler-net || true
-
-docker run \
-  --name school-scheduler-db \
-  --network school-scheduler-net \
-  -e POSTGRES_DB=school_scheduler \
-  -e POSTGRES_USER=scheduler \
-  -e POSTGRES_PASSWORD=scheduler \
-  -p 5432:5432 \
-  -d postgres:15
-```
-
-Una vez levantada la base, cada microservicio puede conectarse utilizando esa red (`school-scheduler-net`) para resolver el host `postgres`.
-
-## Compilación del proyecto
-
-Desde la raíz del repositorio:
-
-```bash
-mvn clean install
-```
-
-El comando compila y empaqueta cada módulo disponible. Si necesitas construir un servicio específico:
-
-```bash
-mvn clean package -pl subject-service -am
-```
-
-## Ejecución de los microservicios (modo desarrollo)
-
-Ejecuta cada servicio con `mvn spring-boot:run`. **Importante**: inicia primero el **Config Service** para que el resto pueda leer la configuración centralizada.
-
-1. **Config Service**
+1. Clona el repositorio y accede al directorio raíz:
    ```bash
-   cd config-service
-   mvn spring-boot:run
+   git clone <url-del-repo>
+   cd fe-school-schedule-genetaror
    ```
-   - Puerto: `8888`
-   - Swagger UI: `http://localhost:8888/swagger-ui/index.html`
-
-2. **Subject Service**
+2. Instala las dependencias del frontend:
    ```bash
-   cd subject-service
-   mvn spring-boot:run
+   cd frontend
+   npm install
    ```
-   - Puerto: `8082`
-   - Swagger UI: `http://localhost:8082/swagger-ui/index.html`
 
-3. **Course Service**
-   ```bash
-   cd course-service
-   mvn spring-boot:run
-   ```
-   - Puerto: `8083`
-   - Swagger UI: `http://localhost:8083/swagger-ui/index.html`
+## Variables de entorno
 
-4. **Teacher Service**
-   ```bash
-   cd teacher-service
-   mvn spring-boot:run
-   ```
-   - Puerto: `8084`
-   - Swagger UI: `http://localhost:8084/swagger-ui/index.html`
+El frontend utiliza variables prefijadas con `VITE_`. Crea un archivo `.env` dentro de `frontend/` para personalizar los endpoints del backend externo:
 
-5. **Holiday Service**
-   ```bash
-   cd holiday-service
-   mvn spring-boot:run
-   ```
-   - Puerto: `8085`
-   - Swagger UI: `http://localhost:8085/swagger-ui/index.html`
-
-> Si ejecutas los servicios fuera de Docker recuerda cambiar el host de la base a `localhost`, tal como se mencionó en la sección de configuración.
-
-## Ejecución con Docker
-
-Cada microservicio ya cuenta con un `Dockerfile`. Luego de generar el JAR (`mvn clean package`), construye la imagen y ejecútala conectándola a la red `school-scheduler-net`.
-
-```bash
-cd subject-service
-mvn clean package
-
-docker build -t schoolscheduler/subject-service .
-docker run --rm \
-  --network school-scheduler-net \
-  -e SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/school_scheduler \
-  -e SPRING_DATASOURCE_USERNAME=scheduler \
-  -e SPRING_DATASOURCE_PASSWORD=scheduler \
-  -p 8082:8082 \
-  schoolscheduler/subject-service
+```env
+VITE_API_BASE_URL=http://localhost:8080/api
+VITE_AUTH_URL=http://localhost:8080/auth
 ```
 
-Repite el proceso para los demás servicios ajustando el puerto expuesto. Cuando todos los microservicios estén listos se añadirá un `docker-compose.yml` que automatice su despliegue.
+Ajusta los valores según la URL expuesta por tu gateway o microservicio de autenticación.
 
-## Resumen de servicios actuales
+## Scripts disponibles
 
-| Servicio         | Propósito                                              | Endpoints clave |
-|------------------|---------------------------------------------------------|-----------------|
-| Config Service    | Gestiona propiedades globales editables.               | `GET/PUT /api/config` |
-| Subject Service   | Administra asignaturas (nombre, nivel, bloques, etc.). | `GET /api/subjects`, `POST /api/subjects` |
-| Course Service    | Administra cursos y expone endpoints de horario.       | `GET /api/courses`, `GET /api/courses/{id}/schedule` |
-| Teacher Service   | Administra docentes y entrega resúmenes de carga.      | `GET /api/teachers`, `GET /api/teachers/{id}/summary` |
-| Holiday Service   | Registra feriados oficiales.                            | `GET /api/holidays`, `POST /api/holidays` |
+Desde la carpeta `frontend/` puedes ejecutar:
 
-## Próximos pasos
+- `npm run dev`: levanta el servidor de desarrollo de Vite en `http://localhost:5173` con recarga en caliente.
+- `npm run build`: genera los artefactos optimizados en `dist/` listos para desplegarse en un servidor estático.
+- `npm run preview`: sirve localmente la build optimizada para verificación final.
+- `npm run lint`: ejecuta ESLint para validar estilo y reglas de TypeScript/React.
 
-- Incorporar `auth-service`, `gateway-service`, `schedule-service`, `event-service` y `eureka-server`.
-- Definir `docker-compose.yml` con todos los contenedores, incluyendo PostgreSQL y Zipkin.
-- Añadir la aplicación `frontend/` en React + Vite.
-- Implementar estrategia de mensajería (RabbitMQ) y trazabilidad (Spring Sleuth + Zipkin).
-- Escribir pruebas unitarias y de integración para cada servicio.
+## Estructura del proyecto
 
-## Contribuciones
+```
+frontend/
+├── public/              # Recursos estáticos (favicon, manifest, etc.)
+├── src/
+│   ├── components/      # Componentes UI reutilizables (navegación, paneles, formularios)
+│   ├── pages/           # Páginas principales (Dashboard, Configuración, Horario)
+│   ├── services/        # Clientes HTTP para los microservicios externos
+│   ├── store/           # (Opcional) hooks Zustand para estado compartido
+│   ├── styles.css       # Estilos globales con Tailwind + utilidades personalizadas
+│   └── main.tsx         # Punto de entrada de la aplicación
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
+```
 
-Las contribuciones son bienvenidas. Abre un issue describiendo la mejora o el bug antes de crear un pull request. Procura seguir las convenciones de código establecidas y añadir pruebas cuando apliquen.
+## Flujo de desarrollo recomendado
 
+1. Levanta los microservicios backend en su proyecto correspondiente (por ejemplo, mediante docker-compose o Maven).
+2. Verifica que el gateway exponga los endpoints REST requeridos (`/api/*`, `/auth/*`).
+3. Configura las variables `VITE_API_BASE_URL` y `VITE_AUTH_URL` para apuntar al backend.
+4. Ejecuta `npm run dev` y comienza a desarrollar o probar las vistas.
+
+## Despliegue
+
+El resultado de `npm run build` es una aplicación estática que puedes hospedar en cualquier CDN, bucket S3, Netlify, Vercel o incluso detrás del mismo gateway del backend.
+
+## Próximos pasos sugeridos
+
+- Añadir pruebas unitarias con Vitest + Testing Library.
+- Integrar autenticación real con JWT y refresco de tokens.
+- Consumir los microservicios reales para mostrar datos en el Dashboard, mantenedores y calendario.
+- Configurar CI/CD (por ejemplo, GitHub Actions) para lint + build automáticos.
+
+## Licencia
+
+Define la licencia que prefieras (MIT, Apache-2.0, etc.) y documenta las restricciones de uso según las necesidades del proyecto.
