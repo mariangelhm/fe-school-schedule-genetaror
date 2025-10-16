@@ -4,6 +4,12 @@ import { persist } from 'zustand/middleware'
 type SubjectType = 'Normal' | 'Especial'
 type ContractType = 'Completo' | 'Parcial'
 
+export interface LevelData {
+  id: string
+  name: string
+  description?: string
+}
+
 export interface SubjectCycleLoad {
   cycleId: string
   weeklyBlocks: number
@@ -12,7 +18,7 @@ export interface SubjectCycleLoad {
 export interface SubjectData {
   id: number
   name: string
-  level: string
+  levelIds: string[]
   cycleLoads: SubjectCycleLoad[]
   maxDailyBlocks: number
   type: SubjectType
@@ -22,7 +28,7 @@ export interface SubjectData {
 export interface CourseData {
   id: number
   name: string
-  level: string
+  levelId: string
   cycleId: string
   headTeacher: string
   students: number
@@ -38,25 +44,14 @@ export interface TeacherData {
   availableBlocks: string
 }
 
-export interface HolidayData {
-  id: number
-  date: string
-  description: string
-}
-
-export interface EventData {
-  id: number
-  date: string
-  description: string
-  noClasses: boolean
-}
-
 interface SchedulerState {
+  levels: LevelData[]
   subjects: SubjectData[]
   courses: CourseData[]
   teachers: TeacherData[]
-  holidays: HolidayData[]
-  events: EventData[]
+  addLevel: (level: Omit<LevelData, 'id'>) => void
+  updateLevel: (id: string, level: Omit<LevelData, 'id'>) => void
+  removeLevel: (id: string) => void
   addSubject: (subject: Omit<SubjectData, 'id'>) => void
   removeSubject: (id: number) => void
   updateSubject: (id: number, subject: Omit<SubjectData, 'id'>) => void
@@ -66,29 +61,26 @@ interface SchedulerState {
   addTeacher: (teacher: Omit<TeacherData, 'id'>) => void
   removeTeacher: (id: number) => void
   updateTeacher: (id: number, teacher: Omit<TeacherData, 'id'>) => void
-  addHoliday: (holiday: Omit<HolidayData, 'id'>) => void
-  removeHoliday: (id: number) => void
-  updateHoliday: (id: number, holiday: Omit<HolidayData, 'id'>) => void
-  addEvent: (event: Omit<EventData, 'id'>) => void
-  removeEvent: (id: number) => void
-  updateEvent: (id: number, event: Omit<EventData, 'id'>) => void
 }
 
-const today = new Date()
+const GENERAL_LEVEL_ID = 'general'
 
-function formatDate(date: Date) {
-  return date.toISOString().split('T')[0]
-}
+const defaultLevels: LevelData[] = [
+  { id: GENERAL_LEVEL_ID, name: 'General' },
+  { id: 'nivel-1-basico', name: '1° Básico' },
+  { id: 'nivel-2-basico', name: '2° Básico' },
+  { id: 'nivel-3-basico', name: '3° Básico' },
+  { id: 'nivel-4-basico', name: '4° Básico' },
+  { id: 'nivel-5-basico', name: '5° Básico' }
+]
 
-const defaultState: Pick<
-  SchedulerState,
-  'subjects' | 'courses' | 'teachers' | 'holidays' | 'events'
-> = {
+const defaultState: Pick<SchedulerState, 'levels' | 'subjects' | 'courses' | 'teachers'> = {
+  levels: defaultLevels,
   subjects: [
     {
       id: 1,
       name: 'Lenguaje',
-      level: '1° Básico',
+      levelIds: ['nivel-1-basico', 'nivel-2-basico'],
       cycleLoads: [
         { cycleId: 'ciclo-basico-i', weeklyBlocks: 6 },
         { cycleId: 'ciclo-basico-ii', weeklyBlocks: 4 }
@@ -100,7 +92,7 @@ const defaultState: Pick<
     {
       id: 2,
       name: 'Matemática',
-      level: '1° Básico',
+      levelIds: ['nivel-1-basico', 'nivel-2-basico'],
       cycleLoads: [
         { cycleId: 'ciclo-basico-i', weeklyBlocks: 5 },
         { cycleId: 'ciclo-basico-ii', weeklyBlocks: 4 }
@@ -112,7 +104,7 @@ const defaultState: Pick<
     {
       id: 3,
       name: 'Música',
-      level: 'General',
+      levelIds: [GENERAL_LEVEL_ID],
       cycleLoads: [
         { cycleId: 'ciclo-basico-i', weeklyBlocks: 2 },
         { cycleId: 'ciclo-basico-ii', weeklyBlocks: 2 }
@@ -126,7 +118,7 @@ const defaultState: Pick<
     {
       id: 1,
       name: '1° Básico A',
-      level: '1° Básico',
+      levelId: 'nivel-1-basico',
       cycleId: 'ciclo-basico-i',
       headTeacher: 'María López',
       students: 32
@@ -134,7 +126,7 @@ const defaultState: Pick<
     {
       id: 2,
       name: '2° Básico B',
-      level: '2° Básico',
+      levelId: 'nivel-2-basico',
       cycleId: 'ciclo-basico-i',
       headTeacher: 'Carlos Rivas',
       students: 29
@@ -159,41 +151,101 @@ const defaultState: Pick<
       weeklyHours: 18,
       availableBlocks: 'Mar-Jue 11:00-17:00'
     }
-  ],
-  holidays: [
-    { id: 1, date: formatDate(new Date(today.getFullYear(), 4, 1)), description: 'Día del trabajador' },
-    { id: 2, date: formatDate(new Date(today.getFullYear(), 8, 18)), description: 'Fiestas Patrias' }
-  ],
-  events: [
-    { id: 1, date: formatDate(new Date(today.getFullYear(), 2, 15)), description: 'Jornada docente', noClasses: true },
-    { id: 2, date: formatDate(new Date(today.getFullYear(), 9, 5)), description: 'Simulacro de emergencia', noClasses: false }
   ]
+}
+
+function slugify(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
+    .replace(/(^-|-$)/g, '')
+    .toLowerCase()
+}
+
+function createLevelId(name: string, existing: LevelData[]): string {
+  const base = slugify(name) || `nivel-${Date.now()}`
+  let candidate = base
+  let counter = 1
+
+  while (existing.some((level) => level.id === candidate)) {
+    candidate = `${base}-${counter}`
+    counter++
+  }
+
+  return candidate
+}
+
+function ensureSubjectLevels(levelIds: string[]): string[] {
+  const unique = Array.from(new Set(levelIds.filter(Boolean)))
+  return unique.length > 0 ? unique : [GENERAL_LEVEL_ID]
 }
 
 export const useSchedulerDataStore = create<SchedulerState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       ...defaultState,
+      addLevel: (level) =>
+        set((state) => {
+          const id = createLevelId(level.name, state.levels)
+          return {
+            levels: [{ id, ...level }, ...state.levels]
+          }
+        }),
+      updateLevel: (id, level) =>
+        set((state) => ({
+          levels: state.levels.map((item) => (item.id === id ? { id, ...level } : item))
+        })),
+      removeLevel: (id) =>
+        set((state) => {
+          if (id === GENERAL_LEVEL_ID) {
+            return state
+          }
+
+          const remainingLevels = state.levels.filter((level) => level.id !== id)
+          return {
+            levels: remainingLevels,
+            courses: state.courses.map((course) => ({
+              ...course,
+              levelId: course.levelId === id ? GENERAL_LEVEL_ID : course.levelId
+            })),
+            subjects: state.subjects.map((subject) => {
+              const nextLevelIds = subject.levelIds.filter((levelId) => levelId !== id)
+              return { ...subject, levelIds: ensureSubjectLevels(nextLevelIds) }
+            })
+          }
+        }),
       addSubject: (subject) =>
         set((state) => ({
-          subjects: [{ id: Date.now(), ...subject }, ...state.subjects]
+          subjects: [{ id: Date.now(), ...subject, levelIds: ensureSubjectLevels(subject.levelIds) }, ...state.subjects]
         })),
       updateSubject: (id, subject) =>
         set((state) => ({
-          subjects: state.subjects.map((item) => (item.id === id ? { id, ...subject } : item))
+          subjects: state.subjects.map((item) =>
+            item.id === id ? { id, ...subject, levelIds: ensureSubjectLevels(subject.levelIds) } : item
+          )
         })),
       removeSubject: (id) =>
         set((state) => ({
           subjects: state.subjects.filter((subject) => subject.id !== id)
         })),
       addCourse: (course) =>
-        set((state) => ({
-          courses: [{ id: Date.now(), ...course }, ...state.courses]
-        })),
+        set((state) => {
+          const validLevelId = state.levels.some((level) => level.id === course.levelId)
+            ? course.levelId
+            : GENERAL_LEVEL_ID
+          return {
+            courses: [{ id: Date.now(), ...course, levelId: validLevelId }, ...state.courses]
+          }
+        }),
       updateCourse: (id, course) =>
-        set((state) => ({
-          courses: state.courses.map((item) => (item.id === id ? { id, ...course } : item))
-        })),
+        set((state) => {
+          const validLevelId = state.levels.some((level) => level.id === course.levelId)
+            ? course.levelId
+            : GENERAL_LEVEL_ID
+          return {
+            courses: state.courses.map((item) => (item.id === id ? { id, ...course, levelId: validLevelId } : item))
+          }
+        }),
       removeCourse: (id) =>
         set((state) => ({
           courses: state.courses.filter((course) => course.id !== id)
@@ -209,92 +261,124 @@ export const useSchedulerDataStore = create<SchedulerState>()(
       removeTeacher: (id) =>
         set((state) => ({
           teachers: state.teachers.filter((teacher) => teacher.id !== id)
-        })),
-      addHoliday: (holiday) =>
-        set((state) => ({
-          holidays: [{ id: Date.now(), ...holiday }, ...state.holidays].sort((a, b) => a.date.localeCompare(b.date))
-        })),
-      updateHoliday: (id, holiday) =>
-        set((state) => ({
-          holidays: state.holidays
-            .map((item) => (item.id === id ? { id, ...holiday } : item))
-            .sort((a, b) => a.date.localeCompare(b.date))
-        })),
-      removeHoliday: (id) =>
-        set((state) => ({
-          holidays: state.holidays.filter((holiday) => holiday.id !== id)
-        })),
-      addEvent: (event) =>
-        set((state) => ({
-          events: [{ id: Date.now(), ...event }, ...state.events].sort((a, b) => a.date.localeCompare(b.date))
-        })),
-      updateEvent: (id, event) =>
-        set((state) => ({
-          events: state.events
-            .map((item) => (item.id === id ? { id, ...event } : item))
-            .sort((a, b) => a.date.localeCompare(b.date))
-        })),
-      removeEvent: (id) =>
-        set((state) => ({
-          events: state.events.filter((event) => event.id !== id)
         }))
     }),
     {
       name: 'scheduler-data-store',
-      version: 2,
+      version: 3,
       migrate: (persistedState: any, version) => {
-        if (!persistedState || version >= 2) {
+        if (!persistedState) {
           return persistedState as SchedulerState
         }
 
-        const ensureCycleLoads = (subject: any): SubjectData => {
-          const weekly = typeof subject.weeklyBlocks === 'number' ? subject.weeklyBlocks : 0
-          const cycleLoads: SubjectCycleLoad[] = [
-            { cycleId: 'ciclo-basico-i', weeklyBlocks: weekly },
-            { cycleId: 'ciclo-basico-ii', weeklyBlocks: weekly }
-          ]
+        if (version >= 3) {
           return {
-            id: subject.id,
-            name: subject.name,
-            level: subject.level,
-            cycleLoads,
-            maxDailyBlocks: Math.max(1, Math.min(3, weekly || 1)),
-            type: subject.type ?? 'Normal',
-            color: subject.color ?? '#2563eb'
-          }
+            ...persistedState,
+            levels:
+              Array.isArray(persistedState.levels) && persistedState.levels.length > 0
+                ? persistedState.levels
+                : defaultState.levels
+          } as SchedulerState
         }
 
-        return {
-          ...persistedState,
-          subjects: Array.isArray(persistedState.subjects)
-            ? persistedState.subjects.map(ensureCycleLoads)
-            : defaultState.subjects,
-          courses: Array.isArray(persistedState.courses)
-            ? persistedState.courses.map((course: any) => ({
-                id: course.id,
-                name: course.name,
-                level: course.level,
-                cycleId: course.cycleId ?? 'ciclo-basico-i',
-                headTeacher: course.headTeacher,
-                students: course.students
-              }))
-            : defaultState.courses,
-          teachers: Array.isArray(persistedState.teachers)
-            ? persistedState.teachers.map((teacher: any) => ({
-                id: teacher.id,
-                name: teacher.name,
-                contractType: teacher.contractType ?? 'Completo',
-                subjects: Array.isArray(teacher.subjects) ? teacher.subjects : [],
-                cycles: Array.isArray(teacher.cycles)
-                  ? teacher.cycles
-                  : ['ciclo-basico-i', 'ciclo-basico-ii'],
-                weeklyHours: teacher.weeklyHours,
-                availableBlocks: teacher.availableBlocks ?? ''
-              }))
-            : defaultState.teachers,
-          holidays: Array.isArray(persistedState.holidays) ? persistedState.holidays : defaultState.holidays,
-          events: Array.isArray(persistedState.events) ? persistedState.events : defaultState.events
+        const levelMap = new Map<string, LevelData>()
+        defaultLevels.forEach((level) => levelMap.set(level.id, level))
+
+        const normaliseList = (input: unknown): string[] => {
+          if (Array.isArray(input)) {
+            return input.map((item) => `${item}`.trim()).filter(Boolean)
+          }
+          if (typeof input === 'string') {
+            return input
+              .split(',')
+              .map((value) => value.trim())
+              .filter(Boolean)
+          }
+          return []
         }
+
+        const ensureLevel = (name: string): string => {
+          const trimmed = name.trim()
+          if (!trimmed) {
+            return GENERAL_LEVEL_ID
+          }
+          const slug = slugify(trimmed) || GENERAL_LEVEL_ID
+          if (!levelMap.has(slug)) {
+            levelMap.set(slug, { id: slug, name: trimmed })
+          }
+          return slug
+        }
+
+        const ensureCycleLoads = (subject: any): SubjectCycleLoad[] => {
+          if (Array.isArray(subject?.cycleLoads)) {
+            return subject.cycleLoads
+              .map((load: any) => ({
+                cycleId: `${load.cycleId ?? ''}`,
+                weeklyBlocks: Math.max(0, Number(load.weeklyBlocks) || 0)
+              }))
+              .filter((load: SubjectCycleLoad) => load.cycleId)
+          }
+
+          const fallback = Math.max(0, Number(subject?.weeklyBlocks) || 0)
+          if (fallback === 0) {
+            return defaultState.subjects[0].cycleLoads
+          }
+          return [
+            { cycleId: 'ciclo-basico-i', weeklyBlocks: fallback },
+            { cycleId: 'ciclo-basico-ii', weeklyBlocks: fallback }
+          ]
+        }
+
+        const legacySubjects = Array.isArray(persistedState.subjects) ? persistedState.subjects : []
+        const subjects: SubjectData[] = legacySubjects.map((subject: any, index: number) => {
+          const levelNames = normaliseList(subject?.level)
+          const levelIds = levelNames.length > 0 ? levelNames.map(ensureLevel) : [GENERAL_LEVEL_ID]
+
+          return {
+            id: subject?.id ?? Date.now() + index,
+            name: `${subject?.name ?? 'Asignatura'}`,
+            levelIds: ensureSubjectLevels(levelIds),
+            cycleLoads: ensureCycleLoads(subject),
+            maxDailyBlocks: Math.max(1, Number(subject?.maxDailyBlocks) || 1),
+            type: subject?.type === 'Especial' ? 'Especial' : 'Normal',
+            color: `${subject?.color ?? '#2563eb'}`
+          }
+        })
+
+        const legacyCourses = Array.isArray(persistedState.courses) ? persistedState.courses : []
+        const courses: CourseData[] = legacyCourses.map((course: any, index: number) => {
+          const levelNames = normaliseList(course?.level)
+          const levelId = levelNames.length > 0 ? ensureLevel(levelNames[0]) : GENERAL_LEVEL_ID
+
+          return {
+            id: course?.id ?? Date.now() + index,
+            name: `${course?.name ?? 'Curso'}`,
+            levelId,
+            cycleId: `${course?.cycleId ?? 'ciclo-basico-i'}`,
+            headTeacher: `${course?.headTeacher ?? ''}`,
+            students: Math.max(0, Number(course?.students) || 0)
+          }
+        })
+
+        const legacyTeachers = Array.isArray(persistedState.teachers) ? persistedState.teachers : []
+        const teachers: TeacherData[] = legacyTeachers.map((teacher: any, index: number) => ({
+          id: teacher?.id ?? Date.now() + index,
+          name: `${teacher?.name ?? 'Profesor'}`,
+          contractType: teacher?.contractType === 'Parcial' ? 'Parcial' : 'Completo',
+          subjects: normaliseList(teacher?.subjects),
+          cycles: Array.isArray(teacher?.cycles)
+            ? teacher.cycles.map((cycle: any) => `${cycle}`)
+            : ['ciclo-basico-i', 'ciclo-basico-ii'],
+          weeklyHours: Math.max(0, Number(teacher?.weeklyHours) || 0),
+          availableBlocks: `${teacher?.availableBlocks ?? ''}`
+        }))
+
+        return {
+          levels: Array.from(levelMap.values()),
+          subjects: subjects.length > 0 ? subjects : defaultState.subjects,
+          courses: courses.length > 0 ? courses : defaultState.courses,
+          teachers: teachers.length > 0 ? teachers : defaultState.teachers
+        } as SchedulerState
       }
     }
   )

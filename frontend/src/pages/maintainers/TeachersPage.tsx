@@ -4,7 +4,7 @@ import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import { fetchConfig, type CycleConfig } from '../../services/configService'
 import { useSchedulerDataStore, type ContractType, type TeacherData } from '../../store/useSchedulerData'
 
-type TeacherDraft = Omit<TeacherData, 'id' | 'subjects' | 'cycles'> & { subjects: string; cycles: string[] }
+type TeacherDraft = Omit<TeacherData, 'id'>
 
 const placeholderCycles: CycleConfig[] = [
   {
@@ -19,7 +19,7 @@ function createEmptyTeacher(cycles: CycleConfig[]): TeacherDraft {
   return {
     name: '',
     contractType: 'Completo',
-    subjects: '',
+    subjects: [],
     cycles: cycles.map((cycle) => cycle.id),
     weeklyHours: 30,
     availableBlocks: ''
@@ -28,6 +28,7 @@ function createEmptyTeacher(cycles: CycleConfig[]): TeacherDraft {
 
 export function TeachersPage() {
   const teachers = useSchedulerDataStore((state) => state.teachers)
+  const subjectsData = useSchedulerDataStore((state) => state.subjects)
   const addTeacher = useSchedulerDataStore((state) => state.addTeacher)
   const updateTeacher = useSchedulerDataStore((state) => state.updateTeacher)
   const removeTeacher = useSchedulerDataStore((state) => state.removeTeacher)
@@ -51,14 +52,14 @@ export function TeachersPage() {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!draft.name.trim() || !draft.subjects.trim() || draft.cycles.length === 0) {
+    if (!draft.name.trim() || draft.subjects.length === 0 || draft.cycles.length === 0) {
       return
     }
 
     const payload: Omit<TeacherData, 'id'> = {
       name: draft.name,
       contractType: draft.contractType,
-      subjects: draft.subjects.split(',').map((subject) => subject.trim()).filter(Boolean),
+      subjects: draft.subjects,
       cycles: draft.cycles,
       weeklyHours: draft.weeklyHours,
       availableBlocks: draft.availableBlocks
@@ -79,7 +80,7 @@ export function TeachersPage() {
     setDraft({
       name: teacher.name,
       contractType: teacher.contractType,
-      subjects: teacher.subjects.join(', '),
+      subjects: teacher.subjects,
       cycles: teacher.cycles,
       weeklyHours: teacher.weeklyHours,
       availableBlocks: teacher.availableBlocks
@@ -194,17 +195,38 @@ export function TeachersPage() {
               <option value="Parcial">Parcial</option>
             </select>
           </label>
-          <label className="grid gap-2 text-sm">
-            <span className="font-medium text-slate-600 dark:text-slate-300">Asignaturas que imparte</span>
-            <textarea
-              value={draft.subjects}
-              onChange={(event) => setDraft((current) => ({ ...current, subjects: event.target.value }))}
-              rows={3}
-              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-              placeholder="Separa por coma: Lenguaje, Matemática"
-              required
-            />
-          </label>
+          <fieldset className="grid gap-2 rounded border border-dashed border-slate-300 p-3 text-sm dark:border-slate-700">
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+              Asignaturas que imparte
+            </legend>
+            {subjectsData.map((subject) => (
+              <label key={subject.id} className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={draft.subjects.includes(subject.name)}
+                  onChange={(event) => {
+                    const checked = event.target.checked
+                    setDraft((current) => ({
+                      ...current,
+                      subjects: checked
+                        ? Array.from(new Set([...current.subjects, subject.name]))
+                        : current.subjects.filter((item) => item !== subject.name)
+                    }))
+                  }}
+                  className="h-4 w-4"
+                />
+                <span>{subject.name}</span>
+              </label>
+            ))}
+            {subjectsData.length === 0 && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                Agrega asignaturas en el mantenedor correspondiente para poder asignarlas a los profesores.
+              </p>
+            )}
+            {draft.subjects.length === 0 && subjectsData.length > 0 && (
+              <p className="text-xs text-rose-500">Selecciona al menos una asignatura.</p>
+            )}
+          </fieldset>
           <fieldset className="grid gap-2 rounded border border-dashed border-slate-300 p-3 text-sm dark:border-slate-700">
             <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
               Ciclos asignados

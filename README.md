@@ -8,8 +8,10 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 - Tipado completo en TypeScript y linting con ESLint + Prettier.
 - Gestión de estado ligero con Zustand y consultas asíncronas con React Query.
 - Mantenedores con datos persistidos en el navegador para trabajar sin backend durante las demos y soportar edición completa.
+- Gestión integrada de niveles académicos para relacionar asignaturas, cursos y docentes desde una única fuente.
 - Previsualización de horarios que respeta configuraciones globales antes de confirmar la generación real.
 - Reacomodo manual de bloques por drag & drop, ciclos académicos configurables y bloque de almuerzo visible en el calendario.
+- Configuraciones de niveles y cargas horarias totalmente desconectadas de feriados/eventos (el mantenedor se concentra en académica pura).
 - Ruteo con `react-router-dom` y componentes reutilizables para paneles, mantenedores y vistas de calendario.
 - Integración prevista con un gateway/API externa protegida con JWT.
 

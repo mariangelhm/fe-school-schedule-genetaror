@@ -1,5 +1,5 @@
 import type { ConfigResponse, CycleConfig } from '../services/configService'
-import type { CourseData, SubjectData, TeacherData } from '../store/useSchedulerData'
+import type { CourseData, LevelData, SubjectData, TeacherData } from '../store/useSchedulerData'
 
 export const WORKING_DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'] as const
 export const LUNCH_LABEL = 'Hora de almuerzo'
@@ -44,6 +44,7 @@ interface BuildPreviewInput {
   courses: CourseData[]
   subjects: SubjectData[]
   teachers: TeacherData[]
+  levels: LevelData[]
   mode: 'full' | 'course'
   courseId?: number
   config: ConfigResponse
@@ -87,28 +88,11 @@ function normaliseName(value: string) {
   return value.trim().toLowerCase()
 }
 
-function resolveTeacher(subject: SubjectData, teachers: TeacherData[], courseCycleId?: string) {
-  const subjectName = normaliseName(subject.name)
-  const candidates = teachers.filter((teacher) => teacher.subjects.map(normaliseName).includes(subjectName))
-
-  if (courseCycleId) {
-    const cycleMatch = candidates.find(
-      (teacher) => teacher.cycles.length === 0 || teacher.cycles.includes(courseCycleId)
-    )
-    if (cycleMatch) {
-      return cycleMatch.name
-    }
-  }
-
-  return candidates[0]?.name ?? 'Sin profesor asignado'
+function getLevelName(levelId: string, levels: LevelData[]): string {
+  return levels.find((level) => level.id === levelId)?.name ?? levelId
 }
 
-function findCycleForLevel(level: string, cycles: CycleConfig[] = []) {
-  const target = normaliseName(level)
-  return cycles.find((cycle) => cycle.levels.map(normaliseName).includes(target))
-}
-
-function resolveCourseCycle(course: CourseData, cycles: CycleConfig[] = []) {
+function resolveCourseCycle(course: CourseData, levels: LevelData[], cycles: CycleConfig[] = []) {
   if (course.cycleId) {
     const byId = cycles.find((cycle) => cycle.id === course.cycleId)
     if (byId) {
@@ -116,19 +100,9 @@ function resolveCourseCycle(course: CourseData, cycles: CycleConfig[] = []) {
     }
   }
 
-  const levelTokens = course.level
-    .split(',')
-    .map((token) => token.trim())
-    .filter(Boolean)
-
-  for (const token of levelTokens) {
-    const match = findCycleForLevel(token, cycles)
-    if (match) {
-      return match
-    }
-  }
-
-  return undefined
+  const levelName = getLevelName(course.levelId, levels)
+  const target = normaliseName(levelName)
+  return cycles.find((cycle) => cycle.levels.map(normaliseName).includes(target))
 }
 
 function getWeeklyBlocksForCycle(subject: SubjectData, cycleId?: string) {
@@ -142,14 +116,15 @@ function getWeeklyBlocksForCycle(subject: SubjectData, cycleId?: string) {
 function calculateDailyCapacity(
   course: CourseData,
   config: ConfigResponse,
-  cycles: CycleConfig[]
+  cycles: CycleConfig[],
+  levels: LevelData[]
 ): { maxDailyBlocks: number; totalCapacity: number; cycleId?: string } {
   const blockDuration = config.blockDuration ?? 45
   const dayStart = config.dayStart ?? '08:00'
   const lunchStart = config.lunchStart
   const lunchDuration = Math.max(0, config.lunchDuration ?? 0)
 
-  const cycle = resolveCourseCycle(course, cycles)
+  const cycle = resolveCourseCycle(course, levels, cycles)
   const dayStartMinutes = timeToMinutes(dayStart)
   const fallbackEnd = dayStartMinutes + blockDuration * 8 + lunchDuration
   const dayEndMinutes = Math.max(dayStartMinutes + blockDuration, cycle ? timeToMinutes(cycle.endTime) : fallbackEnd)
@@ -174,10 +149,30 @@ interface SubjectRequirement {
   weeklyBlocks: number
 }
 
+interface TeacherCapacity {
+  teacher: TeacherData
+  remainingBlocks: number
+  subjects: string[]
+}
+
+function createTeacherCapacities(teachers: TeacherData[], blockDuration: number) {
+  const map = new Map<number, TeacherCapacity>()
+  teachers.forEach((teacher) => {
+    const weeklyMinutes = Math.max(0, teacher.weeklyHours) * 60
+    const capacity = Math.max(0, Math.floor(weeklyMinutes / blockDuration))
+    map.set(teacher.id, {
+      teacher,
+      remainingBlocks: capacity,
+      subjects: teacher.subjects.map(normaliseName)
+    })
+  })
+  return map
+}
+
 function distributeSessions(
   course: CourseData,
   requirements: SubjectRequirement[],
-  teachers: TeacherData[],
+  teacherCapacities: Map<number, TeacherCapacity>,
   days: readonly string[],
   maxDailyBlocks: number,
   courseCycleId?: string
@@ -199,13 +194,41 @@ function distributeSessions(
 
   const assignSubject = (requirement: SubjectRequirement, ensureTailPlacement: boolean) => {
     const { subject, weeklyBlocks } = requirement
-    const teacherName = resolveTeacher(subject, teachers, courseCycleId)
     const maxPerDay = Math.max(1, subject.maxDailyBlocks || 1)
     const counts = dailyCounts.get(subject.id) ?? Array.from({ length: days.length }, () => 0)
     dailyCounts.set(subject.id, counts)
 
     let allocated = 0
     let guard = 0
+
+    const pickTeacher = (): TeacherCapacity => {
+      const subjectName = normaliseName(subject.name)
+      const candidates = Array.from(teacherCapacities.values()).filter((info) => {
+        if (!info.subjects.includes(subjectName)) {
+          return false
+        }
+        if (courseCycleId && info.teacher.cycles.length > 0 && !info.teacher.cycles.includes(courseCycleId)) {
+          return false
+        }
+        return true
+      })
+
+      if (candidates.length === 0) {
+        throw new Error(`No hay profesores que impartan ${subject.name} disponibles para ${course.name}.`)
+      }
+
+      candidates.sort((a, b) => b.remainingBlocks - a.remainingBlocks)
+      const withCapacity = candidates.find((candidate) => candidate.remainingBlocks > 0)
+
+      if (!withCapacity) {
+        const teacherNames = candidates.map((candidate) => candidate.teacher.name).join(', ')
+        throw new Error(
+          `Los profesores ${teacherNames} no tienen horas disponibles para ${subject.name} en ${course.name}. Ajusta la carga semanal.`
+        )
+      }
+
+      return withCapacity
+    }
 
     while (allocated < weeklyBlocks && guard < 1000) {
       const dayIndex = dayPointer % days.length
@@ -233,7 +256,9 @@ function distributeSessions(
         }
       }
 
-      day.push({ subject: subject.name, teacher: teacherName, color: subject.color })
+      const teacherInfo = pickTeacher()
+      day.push({ subject: subject.name, teacher: teacherInfo.teacher.name, color: subject.color })
+      teacherInfo.remainingBlocks = Math.max(0, teacherInfo.remainingBlocks - 1)
       counts[dayIndex] += 1
       allocated++
       dayPointer++
@@ -255,7 +280,9 @@ function distributeSessions(
           counts[dayIndex] < maxPerDay &&
           allocated < weeklyBlocks
         ) {
-          day.push({ subject: subject.name, teacher: teacherName, color: subject.color })
+          const teacherInfo = pickTeacher()
+          day.push({ subject: subject.name, teacher: teacherInfo.teacher.name, color: subject.color })
+          teacherInfo.remainingBlocks = Math.max(0, teacherInfo.remainingBlocks - 1)
           counts[dayIndex] += 1
           allocated++
         }
@@ -444,7 +471,7 @@ export function syncPreview(preview: SchedulePreview): SchedulePreview {
 }
 
 export function buildSchedulePreview(input: BuildPreviewInput): { preview?: SchedulePreview; error?: string } {
-  const { courses, subjects, teachers, mode, courseId, config } = input
+  const { courses, subjects, teachers, levels, mode, courseId, config } = input
 
   if (courses.length === 0) {
     return { error: 'No hay cursos disponibles para generar una previsualización.' }
@@ -477,26 +504,33 @@ export function buildSchedulePreview(input: BuildPreviewInput): { preview?: Sche
   const cycles = config.cycles ?? []
 
   const courseGrids: CourseGrid[] = []
+  const levelMap = new Map(levels.map((level) => [level.id, level.name]))
+  const teacherCapacities = createTeacherCapacities(teachers, blockDuration)
 
   for (const course of workingCourses) {
-    const { maxDailyBlocks, totalCapacity, cycleId } = calculateDailyCapacity(course, config, cycles)
-    const courseLevels = course.level
-      .split(',')
-      .map((value) => normaliseName(value))
-      .filter(Boolean)
+    const { maxDailyBlocks, totalCapacity, cycleId } = calculateDailyCapacity(course, config, cycles, levels)
+    const courseLevelId = course.levelId
+    const courseLevelName = (levelMap.get(courseLevelId) ?? courseLevelId).toLowerCase()
 
     const requirements: SubjectRequirement[] = subjects
       .filter((subject) => {
-        const subjectLevels = subject.level
-          .split(',')
-          .map((value) => normaliseName(value))
-          .filter(Boolean)
+        if (subject.levelIds.length === 0) {
+          return false
+        }
 
-        if (subjectLevels.includes('general')) {
+        if (subject.levelIds.includes(courseLevelId)) {
           return true
         }
 
-        return subjectLevels.some((level) => courseLevels.includes(level))
+        const subjectLevelNames = subject.levelIds.map((levelId) =>
+          (levelMap.get(levelId) ?? levelId).toLowerCase()
+        )
+
+        if (subjectLevelNames.includes('general')) {
+          return true
+        }
+
+        return subjectLevelNames.includes(courseLevelName)
       })
       .map((subject) => ({
         subject,
@@ -512,7 +546,7 @@ export function buildSchedulePreview(input: BuildPreviewInput): { preview?: Sche
       }
     }
 
-    const grid = distributeSessions(course, requirements, teachers, WORKING_DAYS, maxDailyBlocks, cycleId)
+    const grid = distributeSessions(course, requirements, teacherCapacities, WORKING_DAYS, maxDailyBlocks, cycleId)
     if ('error' in grid) {
       return { error: grid.error }
     }

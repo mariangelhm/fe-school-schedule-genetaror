@@ -25,6 +25,7 @@ export function ScheduleView() {
   const courses = useSchedulerDataStore((state) => state.courses)
   const subjects = useSchedulerDataStore((state) => state.subjects)
   const teachers = useSchedulerDataStore((state) => state.teachers)
+  const levels = useSchedulerDataStore((state) => state.levels)
 
   const generationMutation = useMutation(generateSchedule, {
     onMutate: () => setFeedback({ type: 'info', message: 'Generando horarios. Esto puede tardar unos segundos…' }),
@@ -143,6 +144,7 @@ export function ScheduleView() {
                 courses,
                 subjects,
                 teachers,
+                levels,
                 mode,
                 courseId,
                 config

@@ -4,8 +4,7 @@ const resources = [
   { name: 'Asignaturas', href: '/maintenance/subjects' },
   { name: 'Cursos', href: '/maintenance/courses' },
   { name: 'Profesores', href: '/maintenance/teachers' },
-  { name: 'Feriados', href: '/maintenance/holidays' },
-  { name: 'Eventos', href: '/maintenance/events' }
+  { name: 'Niveles', href: '/maintenance/levels' }
 ]
 
 export function MaintenancePage() {

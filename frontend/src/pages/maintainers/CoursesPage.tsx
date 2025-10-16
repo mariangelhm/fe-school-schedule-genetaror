@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import { fetchConfig, type CycleConfig } from '../../services/configService'
@@ -15,10 +15,10 @@ const placeholderCycles: CycleConfig[] = [
   }
 ]
 
-function createEmptyCourse(cycles: CycleConfig[]): CourseDraft {
+function createEmptyCourse(cycles: CycleConfig[], levelId: string): CourseDraft {
   return {
     name: '',
-    level: '',
+    levelId,
     cycleId: cycles[0]?.id ?? '',
     headTeacher: '',
     students: 30
@@ -27,6 +27,7 @@ function createEmptyCourse(cycles: CycleConfig[]): CourseDraft {
 
 export function CoursesPage() {
   const courses = useSchedulerDataStore((state) => state.courses)
+  const levels = useSchedulerDataStore((state) => state.levels)
   const addCourse = useSchedulerDataStore((state) => state.addCourse)
   const updateCourse = useSchedulerDataStore((state) => state.updateCourse)
   const removeCourse = useSchedulerDataStore((state) => state.removeCourse)
@@ -38,19 +39,22 @@ export function CoursesPage() {
   })
 
   const cycles = config?.cycles ?? placeholderCycles
-  const [draft, setDraft] = useState<CourseDraft>(() => createEmptyCourse(cycles))
+  const levelMap = useMemo(() => new Map(levels.map((level) => [level.id, level.name])), [levels])
+  const defaultLevelId = levels[0]?.id ?? 'general'
+  const [draft, setDraft] = useState<CourseDraft>(() => createEmptyCourse(cycles, defaultLevelId))
   const [editingId, setEditingId] = useState<number | null>(null)
 
   useEffect(() => {
     setDraft((current) => ({
       ...current,
-      cycleId: current.cycleId && cycles.some((cycle) => cycle.id === current.cycleId) ? current.cycleId : cycles[0]?.id ?? ''
+      cycleId: current.cycleId && cycles.some((cycle) => cycle.id === current.cycleId) ? current.cycleId : cycles[0]?.id ?? '',
+      levelId: levels.some((level) => level.id === current.levelId) ? current.levelId : defaultLevelId
     }))
-  }, [cycles])
+  }, [cycles, defaultLevelId, levels])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!draft.name.trim() || !draft.level.trim() || !draft.headTeacher.trim() || !draft.cycleId) {
+    if (!draft.name.trim() || !draft.levelId || !draft.headTeacher.trim() || !draft.cycleId) {
       return
     }
 
@@ -60,7 +64,7 @@ export function CoursesPage() {
       addCourse(draft)
     }
 
-    setDraft(createEmptyCourse(cycles))
+    setDraft(createEmptyCourse(cycles, defaultLevelId))
     setEditingId(null)
   }
 
@@ -68,7 +72,7 @@ export function CoursesPage() {
     setEditingId(course.id)
     setDraft({
       name: course.name,
-      level: course.level,
+      levelId: course.levelId,
       cycleId: course.cycleId,
       headTeacher: course.headTeacher,
       students: course.students
@@ -77,7 +81,7 @@ export function CoursesPage() {
 
   const handleCancel = () => {
     setEditingId(null)
-    setDraft(createEmptyCourse(cycles))
+    setDraft(createEmptyCourse(cycles, defaultLevelId))
   }
 
   const handleDelete = (id: number) => {
@@ -98,7 +102,7 @@ export function CoursesPage() {
             <thead className="bg-slate-50 dark:bg-slate-800/80">
               <tr className="text-left">
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Curso</th>
-                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Niveles</th>
+                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Nivel</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Ciclo</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Profesor jefe</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Alumnos</th>
@@ -111,17 +115,7 @@ export function CoursesPage() {
                 return (
                   <tr key={course.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
                     <td className="px-4 py-3 font-medium">{course.name}</td>
-                    <td className="px-4 py-3">
-                      <ul className="list-disc pl-4">
-                        {course.level
-                          .split(',')
-                          .map((level) => level.trim())
-                          .filter(Boolean)
-                          .map((level) => (
-                            <li key={level}>{level}</li>
-                          ))}
-                      </ul>
-                    </td>
+                    <td className="px-4 py-3">{levelMap.get(course.levelId) ?? course.levelId}</td>
                     <td className="px-4 py-3">{cycleName}</td>
                     <td className="px-4 py-3">{course.headTeacher}</td>
                     <td className="px-4 py-3">{course.students}</td>
@@ -171,15 +165,19 @@ export function CoursesPage() {
             />
           </label>
           <label className="grid gap-2 text-sm">
-            <span className="font-medium text-slate-600 dark:text-slate-300">Niveles asociados</span>
-            <textarea
-              value={draft.level}
-              onChange={(event) => setDraft((current) => ({ ...current, level: event.target.value }))}
-              rows={2}
+            <span className="font-medium text-slate-600 dark:text-slate-300">Nivel</span>
+            <select
+              value={draft.levelId}
+              onChange={(event) => setDraft((current) => ({ ...current, levelId: event.target.value }))}
               className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-              placeholder="Ej: 1° Básico, 2° Básico"
               required
-            />
+            >
+              {levels.map((level) => (
+                <option key={level.id} value={level.id}>
+                  {level.name}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="grid gap-2 text-sm">
             <span className="font-medium text-slate-600 dark:text-slate-300">Ciclo</span>

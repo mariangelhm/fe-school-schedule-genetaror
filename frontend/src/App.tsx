@@ -10,8 +10,7 @@ import { fetchConfig } from './services/configService'
 import { SubjectsPage } from './pages/maintainers/SubjectsPage'
 import { CoursesPage } from './pages/maintainers/CoursesPage'
 import { TeachersPage } from './pages/maintainers/TeachersPage'
-import { HolidaysPage } from './pages/maintainers/HolidaysPage'
-import { EventsPage } from './pages/maintainers/EventsPage'
+import { LevelsPage } from './pages/maintainers/LevelsPage'
 
 export default function App() {
   const { data } = useQuery(['config'], fetchConfig, {
@@ -51,13 +50,11 @@ export default function App() {
           <Route path="/maintenance/subjects" element={<SubjectsPage />} />
           <Route path="/maintenance/courses" element={<CoursesPage />} />
           <Route path="/maintenance/teachers" element={<TeachersPage />} />
-          <Route path="/maintenance/holidays" element={<HolidaysPage />} />
-          <Route path="/maintenance/events" element={<EventsPage />} />
+          <Route path="/maintenance/levels" element={<LevelsPage />} />
           <Route path="/subjects" element={<SubjectsPage />} />
           <Route path="/courses" element={<CoursesPage />} />
           <Route path="/teachers" element={<TeachersPage />} />
-          <Route path="/holidays" element={<HolidaysPage />} />
-          <Route path="/events" element={<EventsPage />} />
+          <Route path="/levels" element={<LevelsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>

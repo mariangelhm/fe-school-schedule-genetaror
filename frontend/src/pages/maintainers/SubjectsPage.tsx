@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import { fetchConfig, type CycleConfig } from '../../services/configService'
@@ -11,7 +11,7 @@ import {
 
 interface SubjectDraft {
   name: string
-  level: string
+  levelIds: string[]
   type: SubjectType
   color: string
   maxDailyBlocks: number
@@ -27,7 +27,7 @@ const placeholderCycles: CycleConfig[] = [
   }
 ]
 
-function createEmptyDraft(cycles: CycleConfig[]): SubjectDraft {
+function createEmptyDraft(cycles: CycleConfig[], levelIds: string[]): SubjectDraft {
   const cycleLoads = cycles.reduce<Record<string, number>>((acc, cycle) => {
     acc[cycle.id] = 4
     return acc
@@ -35,7 +35,7 @@ function createEmptyDraft(cycles: CycleConfig[]): SubjectDraft {
 
   return {
     name: '',
-    level: '',
+    levelIds,
     type: 'Normal',
     color: '#2563eb',
     maxDailyBlocks: 2,
@@ -52,6 +52,8 @@ function cycleLoadsToRecord(cycleLoads: SubjectCycleLoad[]): Record<string, numb
 
 export function SubjectsPage() {
   const subjects = useSchedulerDataStore((state) => state.subjects)
+  const courses = useSchedulerDataStore((state) => state.courses)
+  const levels = useSchedulerDataStore((state) => state.levels)
   const addSubject = useSchedulerDataStore((state) => state.addSubject)
   const updateSubject = useSchedulerDataStore((state) => state.updateSubject)
   const removeSubject = useSchedulerDataStore((state) => state.removeSubject)
@@ -63,7 +65,38 @@ export function SubjectsPage() {
   })
 
   const cycleOptions = config?.cycles ?? placeholderCycles
-  const [draft, setDraft] = useState<SubjectDraft>(() => createEmptyDraft(cycleOptions))
+  const levelMap = useMemo(() => new Map(levels.map((level) => [level.id, level.name])), [levels])
+  const derivedLevelIds = useMemo(() => {
+    const ids = new Set<string>()
+    courses.forEach((course) => {
+      if (course.levelId) {
+        ids.add(course.levelId)
+      }
+    })
+    return Array.from(ids)
+  }, [courses])
+
+  const generalLevelId = useMemo(() => {
+    const general = levels.find((level) => level.name.toLowerCase() === 'general' || level.id === 'general')
+    return general?.id ?? 'general'
+  }, [levels])
+
+  const levelOptions = useMemo(() => {
+    const sourceIds = derivedLevelIds.length > 0 ? derivedLevelIds : levels.map((level) => level.id)
+    const uniqueIds = Array.from(new Set([...sourceIds, generalLevelId]))
+    return uniqueIds
+      .map((id) => ({ id, name: levelMap.get(id) ?? id }))
+      .filter((option) => option.name.trim().length > 0)
+  }, [derivedLevelIds, generalLevelId, levelMap, levels])
+
+  const defaultLevelSelection = useMemo(() => {
+    if (levelOptions.length === 0) {
+      return [generalLevelId]
+    }
+    return [levelOptions[0].id]
+  }, [generalLevelId, levelOptions])
+
+  const [draft, setDraft] = useState<SubjectDraft>(() => createEmptyDraft(cycleOptions, defaultLevelSelection))
   const [editingId, setEditingId] = useState<number | null>(null)
 
   useEffect(() => {
@@ -72,19 +105,21 @@ export function SubjectsPage() {
         acc[cycle.id] = current.cycleLoads[cycle.id] ?? 1
         return acc
       }, {})
-      return { ...current, cycleLoads: nextLoads }
+      const validLevels = current.levelIds.filter((levelId) => levelOptions.some((option) => option.id === levelId))
+      const nextLevelIds = validLevels.length > 0 ? validLevels : defaultLevelSelection
+      return { ...current, cycleLoads: nextLoads, levelIds: nextLevelIds }
     })
-  }, [cycleOptions])
+  }, [cycleOptions, defaultLevelSelection, levelOptions])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!draft.name.trim() || !draft.level.trim()) {
+    if (!draft.name.trim() || draft.levelIds.length === 0) {
       return
     }
 
     const payload: Omit<SubjectData, 'id'> = {
       name: draft.name,
-      level: draft.level,
+      levelIds: draft.levelIds,
       type: draft.type,
       color: draft.color,
       maxDailyBlocks: Math.max(1, Number(draft.maxDailyBlocks) || 1),
@@ -100,7 +135,7 @@ export function SubjectsPage() {
       addSubject(payload)
     }
 
-    setDraft(createEmptyDraft(cycleOptions))
+    setDraft(createEmptyDraft(cycleOptions, defaultLevelSelection))
     setEditingId(null)
   }
 
@@ -109,7 +144,7 @@ export function SubjectsPage() {
     const cycleRecord = cycleLoadsToRecord(subject.cycleLoads)
     setDraft({
       name: subject.name,
-      level: subject.level,
+      levelIds: subject.levelIds,
       type: subject.type,
       color: subject.color,
       maxDailyBlocks: subject.maxDailyBlocks,
@@ -122,7 +157,7 @@ export function SubjectsPage() {
 
   const handleCancel = () => {
     setEditingId(null)
-    setDraft(createEmptyDraft(cycleOptions))
+    setDraft(createEmptyDraft(cycleOptions, defaultLevelSelection))
   }
 
   const handleDelete = (id: number) => {
@@ -161,13 +196,9 @@ export function SubjectsPage() {
                   </td>
                   <td className="px-4 py-3">
                     <ul className="list-disc pl-4">
-                      {subject.level
-                        .split(',')
-                        .map((level) => level.trim())
-                        .filter(Boolean)
-                        .map((level) => (
-                          <li key={level}>{level}</li>
-                        ))}
+                      {subject.levelIds.map((levelId) => (
+                        <li key={levelId}>{levelMap.get(levelId) ?? levelId}</li>
+                      ))}
                     </ul>
                   </td>
                   <td className="px-4 py-3">
@@ -230,14 +261,30 @@ export function SubjectsPage() {
           </label>
           <label className="grid gap-2 text-sm">
             <span className="font-medium text-slate-600 dark:text-slate-300">Niveles asociados</span>
-            <textarea
-              value={draft.level}
-              onChange={(event) => setDraft((current) => ({ ...current, level: event.target.value }))}
-              rows={2}
-              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-              placeholder="Ej: 1° Básico, 2° Básico"
-              required
-            />
+            <div className="grid gap-2 rounded border border-dashed border-slate-300 p-3 dark:border-slate-700">
+              {levelOptions.map((option) => (
+                <label key={option.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={draft.levelIds.includes(option.id)}
+                    onChange={(event) => {
+                      const checked = event.target.checked
+                      setDraft((current) => ({
+                        ...current,
+                        levelIds: checked
+                          ? Array.from(new Set([...current.levelIds, option.id]))
+                          : current.levelIds.filter((levelId) => levelId !== option.id)
+                      }))
+                    }}
+                    className="h-4 w-4"
+                  />
+                  <span>{option.name}</span>
+                </label>
+              ))}
+              {draft.levelIds.length === 0 && (
+                <p className="text-xs text-rose-500">Selecciona al menos un nivel.</p>
+              )}
+            </div>
           </label>
           <label className="grid gap-2 text-sm">
             <span className="font-medium text-slate-600 dark:text-slate-300">Tipo</span>
