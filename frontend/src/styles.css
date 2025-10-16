@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+  --brand-color: #2563eb;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.bg-brand-dynamic {
+  background-color: var(--brand-color);
+}
+
+.text-brand-dynamic {
+  color: var(--brand-color);
+}
