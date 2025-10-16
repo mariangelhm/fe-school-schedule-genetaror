@@ -9,8 +9,16 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 - Gestión de estado ligero con Zustand y consultas asíncronas con React Query.
 - Mantenedores con datos persistidos en el navegador para trabajar sin backend durante las demos.
 - Previsualización de horarios que respeta configuraciones globales antes de confirmar la generación real.
+- Reacomodo manual de bloques por drag & drop, ciclos académicos configurables y bloque de almuerzo visible en el calendario.
 - Ruteo con `react-router-dom` y componentes reutilizables para paneles, mantenedores y vistas de calendario.
 - Integración prevista con un gateway/API externa protegida con JWT.
+
+## Configuración dinámica desde el front
+
+- **Ciclos académicos:** define nombre, niveles asociados y hora de término diaria para cada ciclo. Estos valores limitan automáticamente la cantidad de bloques que puede tener un curso por día y semana.
+- **Bloque de almuerzo:** especifica el inicio y duración del almuerzo. El bloque aparece resaltado en las previsualizaciones y se descuenta de la capacidad diaria disponible.
+- **Previsualización editable:** antes de generar los horarios definitivos puedes arrastrar cada clase a otro día o bloque para ajustar manualmente la malla.
+- Todas las configuraciones se guardan en el navegador (localStorage) cuando no hay backend disponible, permitiendo demos sin conexión.
 
 ## Requisitos previos
 

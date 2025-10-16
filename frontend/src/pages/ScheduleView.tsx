@@ -135,8 +135,9 @@ export function ScheduleView() {
             className="w-fit rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
             disabled={(mode === 'course' && !courseId) || generationMutation.isLoading}
             onClick={() => {
-              const config =
-                queryClient.getQueryData<ConfigResponse>(['config']) ?? ({ blockDuration: 45, dayStart: '08:00' } as ConfigResponse)
+          const config =
+            queryClient.getQueryData<ConfigResponse>(['config']) ??
+            ({ blockDuration: 45, dayStart: '08:00', lunchStart: '13:00', lunchDuration: 60 } as ConfigResponse)
 
               const result = buildSchedulePreview({
                 courses,
@@ -184,17 +185,17 @@ export function ScheduleView() {
         year={year}
         onClose={() => {
           setPreviewOpen(false)
-          setPreviewData(null)
         }}
-        onConfirm={() => {
+        onPreviewChange={(updated) => setPreviewData(updated)}
+        onConfirm={(finalPreview) => {
           setPreviewOpen(false)
+          setPreviewData(finalPreview)
           generationMutation.mutate({
             mode,
             courseId,
             year,
             replaceExisting: replace
           })
-          setPreviewData(null)
         }}
       />
     </>

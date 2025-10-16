@@ -1,18 +1,30 @@
 import { Dialog, Transition } from '@headlessui/react'
 import { Fragment, useEffect, useState } from 'react'
+import type { DragEvent } from 'react'
 import type { SchedulePreview } from '../utils/schedulePreview'
+import { LUNCH_LABEL, syncPreview } from '../utils/schedulePreview'
 
 interface SchedulePreviewModalProps {
   open: boolean
   preview: SchedulePreview | null
   onClose: () => void
-  onConfirm: () => void
+  onConfirm: (preview: SchedulePreview) => void
   mode: 'full' | 'course'
   year: number
+  onPreviewChange?: (preview: SchedulePreview) => void
 }
 
-export function SchedulePreviewModal({ open, preview, onClose, onConfirm, mode, year }: SchedulePreviewModalProps) {
+export function SchedulePreviewModal({
+  open,
+  preview,
+  onClose,
+  onConfirm,
+  mode,
+  year,
+  onPreviewChange
+}: SchedulePreviewModalProps) {
   const [activeTab, setActiveTab] = useState<'courses' | 'teachers'>('courses')
+  const [draftPreview, setDraftPreview] = useState<SchedulePreview | null>(preview)
 
   useEffect(() => {
     if (open) {
@@ -20,11 +32,72 @@ export function SchedulePreviewModal({ open, preview, onClose, onConfirm, mode, 
     }
   }, [open])
 
+  useEffect(() => {
+    setDraftPreview(preview)
+  }, [preview])
+
+  const handleSwap = (
+    source: { tableId: number | string; rowIndex: number; columnIndex: number },
+    target: { tableId: number | string; rowIndex: number; columnIndex: number }
+  ) => {
+    setDraftPreview((current) => {
+      if (!current) {
+        return current
+      }
+
+      if (
+        source.tableId === target.tableId &&
+        source.rowIndex === target.rowIndex &&
+        source.columnIndex === target.columnIndex
+      ) {
+        return current
+      }
+
+      const nextCourses = current.courses.map((table) => ({
+        ...table,
+        rows: table.rows.map((row) => ({
+          ...row,
+          cells: [...row.cells]
+        }))
+      }))
+
+      const sourceTable = nextCourses.find((table) => table.id === source.tableId)
+      const targetTable = nextCourses.find((table) => table.id === target.tableId)
+
+      if (!sourceTable || !targetTable) {
+        return current
+      }
+
+      const sourceRow = sourceTable.rows[source.rowIndex]
+      const targetRow = targetTable.rows[target.rowIndex]
+
+      if (!sourceRow || !targetRow || sourceRow.kind !== 'class' || targetRow.kind !== 'class') {
+        return current
+      }
+
+      const movingCell = sourceRow.cells[source.columnIndex]
+
+      if (!movingCell) {
+        return current
+      }
+
+      const receivingCell = targetRow.cells[target.columnIndex]
+
+      sourceRow.cells[source.columnIndex] = receivingCell ?? null
+      targetRow.cells[target.columnIndex] = movingCell
+
+      const updated = syncPreview({ ...current, courses: nextCourses })
+      onPreviewChange?.(updated)
+      return updated
+    })
+  }
+
   if (!preview) {
     return null
   }
 
-  const { days, courses, teachers, summary, config } = preview
+  const workingPreview = draftPreview ?? preview
+  const { days, courses, teachers, summary, config } = workingPreview
 
   const tabs: Array<{ id: 'courses' | 'teachers'; label: string; count: number }> = [
     { id: 'courses', label: 'Por curso', count: courses.length },
@@ -32,6 +105,7 @@ export function SchedulePreviewModal({ open, preview, onClose, onConfirm, mode, 
   ]
 
   const tables = activeTab === 'courses' ? courses : teachers
+  const allowEditing = activeTab === 'courses'
 
   return (
     <Transition.Root show={open} as={Fragment}>
@@ -66,12 +140,16 @@ export function SchedulePreviewModal({ open, preview, onClose, onConfirm, mode, 
                       Previsualización del horario {mode === 'full' ? 'anual' : 'del curso'}
                     </Dialog.Title>
                     <p className="mt-1 text-sm text-slate-500 dark:text-slate-300">
-                      Año académico {year}. Bloques de {config.blockDuration} minutos iniciando a las {config.dayStart}.
+                      Año académico {year}. Bloques de {config.blockDuration} minutos iniciando a las {config.dayStart} y almuerzo a las {config.lunchStart}.
                     </p>
                     <p className="mt-2 text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                      {summary.totalSessions} bloques planificados · {summary.totalCourses} cursos ·{' '}
-                      {summary.totalTeachers} profesores
+                      {summary.totalSessions} bloques planificados · {summary.totalCourses} cursos · {summary.totalTeachers} profesores
                     </p>
+                    {allowEditing && (
+                      <p className="mt-2 text-xs font-medium text-brand-dynamic/80 dark:text-brand/70">
+                        Arrastra y suelta los bloques entre días o cursos antes de confirmar la generación.
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -128,32 +206,97 @@ export function SchedulePreviewModal({ open, preview, onClose, onConfirm, mode, 
                                 </tr>
                               </thead>
                               <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                                {table.rows.map((row) => (
-                                  <tr key={row.time} className="bg-white dark:bg-slate-900/60">
+                                {table.rows.map((row, rowIndex) => (
+                                  <tr key={`${table.id}-${row.time}`} className="bg-white dark:bg-slate-900/60">
                                     <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
                                       {row.time}
                                     </th>
-                                    {row.cells.map((cell, index) => (
-                                      <td key={`${row.time}-${index}`} className="px-4 py-3 align-top">
-                                        {cell ? (
-                                          <div className="grid gap-1">
-                                            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
-                                              <span
-                                                className="h-3 w-3 rounded-full"
-                                                style={{ backgroundColor: cell.color }}
-                                                aria-hidden="true"
-                                              />
-                                              {cell.subject}
+                                    {row.cells.map((cell, columnIndex) => {
+                                      const isClassRow = row.kind === 'class'
+                                      const cellKey = `${table.id}-${rowIndex}-${columnIndex}`
+
+                                      const handleDragStart = (event: DragEvent<HTMLTableCellElement>) => {
+                                        if (!allowEditing || !isClassRow || !cell) {
+                                          return
+                                        }
+
+                                        const payload = JSON.stringify({
+                                          tableId: table.id,
+                                          rowIndex,
+                                          columnIndex
+                                        })
+
+                                        event.dataTransfer.effectAllowed = 'move'
+                                        event.dataTransfer.setData('application/json', payload)
+                                        event.dataTransfer.setData('text/plain', payload)
+                                      }
+
+                                      const handleDropEvent = (event: DragEvent<HTMLTableCellElement>) => {
+                                        if (!allowEditing || !isClassRow) {
+                                          return
+                                        }
+
+                                        event.preventDefault()
+                                        const data = event.dataTransfer.getData('application/json') || event.dataTransfer.getData('text/plain')
+
+                                        if (!data) {
+                                          return
+                                        }
+
+                                        try {
+                                          const parsed = JSON.parse(data) as {
+                                            tableId: number | string
+                                            rowIndex: number
+                                            columnIndex: number
+                                          }
+
+                                          handleSwap(parsed, {
+                                            tableId: table.id,
+                                            rowIndex,
+                                            columnIndex
+                                          })
+                                        } catch (error) {
+                                          console.warn('No se pudo procesar el intercambio de bloques', error)
+                                        }
+                                      }
+
+                                      return (
+                                        <td
+                                          key={cellKey}
+                                          className={`px-4 py-3 align-top ${allowEditing && isClassRow ? 'cursor-move' : ''}`}
+                                          draggable={allowEditing && isClassRow && Boolean(cell)}
+                                          onDragStart={handleDragStart}
+                                          onDragOver={(event) => {
+                                            if (allowEditing && isClassRow) {
+                                              event.preventDefault()
+                                            }
+                                          }}
+                                          onDrop={handleDropEvent}
+                                        >
+                                          {row.kind === 'lunch' ? (
+                                            <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-semibold uppercase text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                                              {LUNCH_LABEL}
                                             </div>
-                                            <p className="text-xs text-slate-500 dark:text-slate-300">
-                                              {activeTab === 'courses' ? cell.teacher : cell.course}
-                                            </p>
-                                          </div>
-                                        ) : (
-                                          <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
-                                        )}
-                                      </td>
-                                    ))}
+                                          ) : cell ? (
+                                            <div className="grid gap-1">
+                                              <div className="flex items-center gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                                <span
+                                                  className="h-3 w-3 rounded-full"
+                                                  style={{ backgroundColor: cell.color }}
+                                                  aria-hidden="true"
+                                                />
+                                                {cell.subject}
+                                              </div>
+                                              <p className="text-xs text-slate-500 dark:text-slate-300">
+                                                {activeTab === 'courses' ? cell.teacher : cell.course}
+                                              </p>
+                                            </div>
+                                          ) : (
+                                            <span className="text-xs text-slate-300 dark:text-slate-600">—</span>
+                                          )}
+                                        </td>
+                                      )
+                                    })}
                                   </tr>
                                 ))}
                               </tbody>
@@ -179,7 +322,7 @@ export function SchedulePreviewModal({ open, preview, onClose, onConfirm, mode, 
                     </button>
                     <button
                       type="button"
-                      onClick={onConfirm}
+                      onClick={() => onConfirm(workingPreview)}
                       className="rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white shadow hover:opacity-90 focus:outline-none focus:ring focus:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       Confirmar generación
@@ -194,3 +337,4 @@ export function SchedulePreviewModal({ open, preview, onClose, onConfirm, mode, 
     </Transition.Root>
   )
 }
+

@@ -22,7 +22,9 @@ export default function App() {
       primaryColor: '#2563eb',
       theme: 'dark',
       blockDuration: 45,
-      dayStart: '08:00'
+      dayStart: '08:00',
+      lunchStart: '13:00',
+      lunchDuration: 60
     }
   })
 
