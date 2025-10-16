@@ -13,7 +13,7 @@ const navItems = [
 
 export function TopNavigation({ schoolName }: TopNavigationProps) {
   return (
-    <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur">
+    <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4" aria-label="Principal">
         <Link to="/" className="text-lg font-semibold text-brand-dynamic">
           {schoolName}
@@ -25,7 +25,9 @@ export function TopNavigation({ schoolName }: TopNavigationProps) {
               to={item.path}
               className={({ isActive }) =>
                 `rounded px-3 py-2 font-medium transition-colors ${
-                  isActive ? 'bg-slate-800 text-white' : 'text-slate-300 hover:text-white'
+                  isActive
+                    ? 'bg-slate-200 text-slate-900 dark:bg-slate-800 dark:text-white'
+                    : 'text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white'
                 }`
               }
             >

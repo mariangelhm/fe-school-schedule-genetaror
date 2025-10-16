@@ -3,13 +3,18 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --brand-color: #2563eb;
+}
+
+:root.dark {
+  color-scheme: dark;
 }
 
 body {
   margin: 0;
   font-family: 'Inter', system-ui, sans-serif;
+  background-color: transparent;
 }
 
 .bg-brand-dynamic {
