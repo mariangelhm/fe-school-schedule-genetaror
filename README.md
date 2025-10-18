@@ -27,10 +27,10 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 
 ## Reglas funcionales de los mantenedores
 
-- **Cursos:** cada curso debe tener un aula asignada y su ciclo se calcula automáticamente según la configuración global. Si el curso pertenece al nivel Media, se exige seleccionar un profesor jefe registrado previamente.
-- **Profesores:** cada docente pertenece a un único ciclo académico, debe indicar la carga horaria semanal a cumplir y seleccionar un curso existente; si no hay cursos disponibles, el mantenedor queda bloqueado con un mensaje orientativo.
-- **Asignaturas:** definen la carga semanal por ciclo y el límite máximo de bloques consecutivos que pueden impartirse en un mismo día.
-- **Aulas:** se gestionan por nivel para garantizar que solo se asignen a cursos compatibles y no permiten nombres duplicados.
+- **Cursos:** cada curso debe tener un aula asignada (no se pueden compartir aulas entre cursos) y su ciclo se calcula automáticamente según la configuración global. Si el curso pertenece al nivel Media, se exige seleccionar un profesor jefe registrado previamente.
+- **Profesores:** cada docente pertenece a un único nivel, debe indicar la carga horaria semanal y elegir al menos un curso existente. El mantenedor queda bloqueado cuando no hay cursos creados y solo los profesores que imparten asignaturas especiales pueden quedar asociados a más de un curso.
+- **Asignaturas:** definen la carga semanal por ciclo, el límite máximo de bloques diarios y solo pueden registrarse una vez por nivel (no se permiten duplicar nombres en el mismo nivel).
+- **Aulas:** se gestionan por nivel para garantizar compatibilidad, no permiten nombres duplicados y cada aula solo puede quedar asociada a un curso a la vez.
 - **Validación de formularios:** todos los campos de texto permiten hasta 50 caracteres, alineados con los requisitos de datos del backend.
 
 ## Requisitos previos

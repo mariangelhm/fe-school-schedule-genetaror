@@ -161,6 +161,7 @@ interface TeacherCapacity {
   teacher: TeacherData
   remainingBlocks: number
   subjects: string[]
+  courseIds: Set<number>
 }
 
 function createTeacherCapacities(teachers: TeacherData[], blockDuration: number) {
@@ -171,7 +172,8 @@ function createTeacherCapacities(teachers: TeacherData[], blockDuration: number)
     map.set(teacher.id, {
       teacher,
       remainingBlocks: capacity,
-      subjects: teacher.subjects.map(normaliseName)
+      subjects: teacher.subjects.map(normaliseName),
+      courseIds: new Set(teacher.courseIds)
     })
   })
   return map
@@ -215,7 +217,10 @@ function distributeSessions(
         if (!info.subjects.includes(subjectName)) {
           return false
         }
-        if (courseCycleId && info.teacher.cycleId && info.teacher.cycleId !== courseCycleId) {
+        if (info.teacher.levelId !== course.levelId) {
+          return false
+        }
+        if (!info.courseIds.has(course.id)) {
           return false
         }
         return true

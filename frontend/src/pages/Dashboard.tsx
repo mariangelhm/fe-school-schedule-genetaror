@@ -61,13 +61,19 @@ export function Dashboard() {
         <DataCard
           title="Profesores"
           emptyMessage="Agrega profesores para poder asignar clases."
-          items={teachers.map((teacher) => ({
-            id: teacher.id,
-            primary: teacher.name,
-            secondary: `${teacher.subjects.length} asignaturas · Curso: ${
-              teacher.courseId ? courseMap.get(teacher.courseId) ?? 'Sin curso' : 'Sin curso'
-            }`
-          }))}
+          items={teachers.map((teacher) => {
+            const courseNames = teacher.courseIds
+              .map((courseId) => courseMap.get(courseId))
+              .filter((name): name is string => Boolean(name))
+            const levelName = levelMap.get(teacher.levelId) ?? teacher.levelId
+            return {
+              id: teacher.id,
+              primary: teacher.name,
+              secondary: `${teacher.subjects.length} asignaturas · Nivel: ${levelName} · Cursos: ${
+                courseNames.length > 0 ? courseNames.join(', ') : 'Sin cursos'
+              }`
+            }
+          })}
           footerLink={{ to: '/maintenance/teachers', label: 'Gestionar profesores' }}
         />
         <DataCard

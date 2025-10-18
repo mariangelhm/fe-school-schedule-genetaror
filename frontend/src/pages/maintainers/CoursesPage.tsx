@@ -9,12 +9,13 @@ import {
 } from '../../store/useSchedulerData'
 
 type CourseDraft = Omit<CourseData, 'id'>
+
 function buildCourseDraft(levelId: string, classrooms: ClassroomData[]): CourseDraft {
   return {
     name: '',
     levelId,
     headTeacherId: null,
-    classroomId: classrooms[0]?.id ?? null
+    classroomId: classrooms.find((classroom) => classroom.levelId === levelId)?.id ?? null
   }
 }
 
@@ -31,6 +32,12 @@ export function CoursesPage() {
   const defaultLevelId = levels[0]?.id ?? DEFAULT_LEVEL_ID
   const [draft, setDraft] = useState<CourseDraft>(() => buildCourseDraft(defaultLevelId, classrooms))
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const mediaTeachers = useMemo(
+    () => teachers.filter((teacher) => teacher.levelId === 'media'),
+    [teachers]
+  )
 
   useEffect(() => {
     setDraft((current) => {
@@ -48,29 +55,47 @@ export function CoursesPage() {
         classroomId: nextClassroomId,
         headTeacherId:
           (nextLevelId === 'media' ? current.headTeacherId : null) ??
-          (nextLevelId === 'media' && teachers.length > 0 ? teachers[0].id : null)
+          (nextLevelId === 'media' && mediaTeachers.length > 0 ? mediaTeachers[0].id : null)
       }
     })
-  }, [defaultLevelId, classrooms, teachers])
+  }, [defaultLevelId, classrooms, mediaTeachers])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim() || !draft.levelId || !draft.classroomId) {
+      setError('Completa todos los campos obligatorios.')
       return
     }
 
     if (draft.levelId === 'media' && !draft.headTeacherId) {
+      setError('Los cursos de nivel medio requieren un profesor jefe asignado.')
       return
     }
 
+    const classroomInUse = courses.some(
+      (course) => course.id !== editingId && course.classroomId === draft.classroomId
+    )
+    if (classroomInUse) {
+      setError('El aula seleccionada ya está asignada a otro curso.')
+      return
+    }
+
+    const payload: Omit<CourseData, 'id'> = {
+      name: draft.name,
+      levelId: draft.levelId,
+      headTeacherId: draft.levelId === 'media' ? draft.headTeacherId : null,
+      classroomId: draft.classroomId
+    }
+
     if (editingId) {
-      updateCourse(editingId, draft)
+      updateCourse(editingId, payload)
     } else {
-      addCourse(draft)
+      addCourse(payload)
     }
 
     setDraft(buildCourseDraft(defaultLevelId, classrooms))
     setEditingId(null)
+    setError(null)
   }
 
   const handleEdit = (course: CourseData) => {
@@ -81,11 +106,13 @@ export function CoursesPage() {
       headTeacherId: course.headTeacherId,
       classroomId: course.classroomId
     })
+    setError(null)
   }
 
   const handleCancel = () => {
     setEditingId(null)
     setDraft(buildCourseDraft(defaultLevelId, classrooms))
+    setError(null)
   }
 
   const handleDelete = (id: number) => {
@@ -172,7 +199,16 @@ export function CoursesPage() {
             <span className="font-medium text-slate-600 dark:text-slate-300">Nivel</span>
             <select
               value={draft.levelId}
-              onChange={(event) => setDraft((current) => ({ ...current, levelId: event.target.value }))}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  levelId: event.target.value,
+                  headTeacherId:
+                    event.target.value === 'media'
+                      ? current.headTeacherId
+                      : null
+                }))
+              }
               className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
               required
             >
@@ -198,16 +234,18 @@ export function CoursesPage() {
                 required
               >
                 <option value="" disabled>
-                  Selecciona un profesor
+                  Selecciona un profesor jefe
                 </option>
-                {teachers.map((teacher) => (
+                {mediaTeachers.map((teacher) => (
                   <option key={teacher.id} value={teacher.id}>
                     {teacher.name}
                   </option>
                 ))}
               </select>
-              {teachers.length === 0 && (
-                <p className="text-xs text-rose-500">Necesitas registrar al menos un profesor antes de asignarlo.</p>
+              {mediaTeachers.length === 0 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Registra profesores de nivel medio para habilitar esta selección.
+                </p>
               )}
             </label>
           )}
@@ -239,6 +277,7 @@ export function CoursesPage() {
               <p className="text-xs text-rose-500">No existen aulas para este nivel. Regístralas antes de continuar.</p>
             )}
           </label>
+          {error && <p className="text-sm text-rose-500">{error}</p>}
           <div className="flex items-center gap-3">
             <button type="submit" className="rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white">
               {editingId ? 'Actualizar curso' : 'Guardar curso'}
