@@ -12,6 +12,12 @@ const placeholderCycles: CycleConfig[] = [
     name: 'Ciclo Básico I',
     levels: ['1° Básico', '2° Básico', '3° Básico'],
     endTime: '13:00'
+  },
+  {
+    id: 'ciclo-media',
+    name: 'Ciclo Media',
+    levels: ['1° Medio', '2° Medio', '3° Medio', '4° Medio'],
+    endTime: '17:00'
   }
 ]
 
@@ -20,9 +26,8 @@ function createEmptyTeacher(cycles: CycleConfig[]): TeacherDraft {
     name: '',
     contractType: 'Completo',
     subjects: [],
-    cycles: cycles.map((cycle) => cycle.id),
-    weeklyHours: 30,
-    availableBlocks: ''
+    cycleId: cycles[0]?.id ?? '',
+    weeklyHours: 30
   }
 }
 
@@ -46,13 +51,13 @@ export function TeachersPage() {
   useEffect(() => {
     setDraft((current) => ({
       ...current,
-      cycles: current.cycles.filter((cycleId) => cycles.some((cycle) => cycle.id === cycleId))
+      cycleId: cycles.some((cycle) => cycle.id === current.cycleId) ? current.cycleId : cycles[0]?.id ?? ''
     }))
   }, [cycles])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!draft.name.trim() || draft.subjects.length === 0 || draft.cycles.length === 0) {
+    if (!draft.name.trim() || draft.subjects.length === 0 || !draft.cycleId) {
       return
     }
 
@@ -60,9 +65,8 @@ export function TeachersPage() {
       name: draft.name,
       contractType: draft.contractType,
       subjects: draft.subjects,
-      cycles: draft.cycles,
-      weeklyHours: draft.weeklyHours,
-      availableBlocks: draft.availableBlocks
+      cycleId: draft.cycleId,
+      weeklyHours: draft.weeklyHours
     }
 
     if (editingId) {
@@ -81,9 +85,8 @@ export function TeachersPage() {
       name: teacher.name,
       contractType: teacher.contractType,
       subjects: teacher.subjects,
-      cycles: teacher.cycles,
-      weeklyHours: teacher.weeklyHours,
-      availableBlocks: teacher.availableBlocks
+      cycleId: teacher.cycleId,
+      weeklyHours: teacher.weeklyHours
     })
   }
 
@@ -112,9 +115,8 @@ export function TeachersPage() {
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Nombre</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Contrato</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Asignaturas</th>
-                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Ciclos</th>
+                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Ciclo</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Horas</th>
-                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Disponibilidad</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -130,16 +132,8 @@ export function TeachersPage() {
                       ))}
                     </ul>
                   </td>
-                  <td className="px-4 py-3">
-                    <ul className="list-disc pl-4">
-                      {teacher.cycles.map((cycleId) => {
-                        const cycleName = cycles.find((cycle) => cycle.id === cycleId)?.name ?? cycleId
-                        return <li key={cycleId}>{cycleName}</li>
-                      })}
-                    </ul>
-                  </td>
+                  <td className="px-4 py-3">{cycles.find((cycle) => cycle.id === teacher.cycleId)?.name ?? teacher.cycleId}</td>
                   <td className="px-4 py-3">{teacher.weeklyHours}</td>
-                  <td className="px-4 py-3">{teacher.availableBlocks}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-3">
                       <button
@@ -180,6 +174,7 @@ export function TeachersPage() {
             <input
               value={draft.name}
               onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+              maxLength={50}
               className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
               required
             />
@@ -229,46 +224,33 @@ export function TeachersPage() {
           </fieldset>
           <fieldset className="grid gap-2 rounded border border-dashed border-slate-300 p-3 text-sm dark:border-slate-700">
             <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-              Ciclos asignados
+              Ciclo asignado
             </legend>
-            {cycles.map((cycle) => (
-              <label key={cycle.id} className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={draft.cycles.includes(cycle.id)}
-                  onChange={(event) => {
-                    const checked = event.target.checked
-                    setDraft((current) => ({
-                      ...current,
-                      cycles: checked
-                        ? Array.from(new Set([...current.cycles, cycle.id]))
-                        : current.cycles.filter((item) => item !== cycle.id)
-                    }))
-                  }}
-                  className="h-4 w-4"
-                />
-                <span>{cycle.name}</span>
-              </label>
-            ))}
-            {draft.cycles.length === 0 && (
-              <p className="text-xs text-rose-500">Selecciona al menos un ciclo.</p>
-            )}
+            <select
+              value={draft.cycleId}
+              onChange={(event) => setDraft((current) => ({ ...current, cycleId: event.target.value }))}
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+              required
+            >
+              <option value="" disabled>
+                Selecciona un ciclo
+              </option>
+              {cycles.map((cycle) => (
+                <option key={cycle.id} value={cycle.id}>
+                  {cycle.name}
+                </option>
+              ))}
+            </select>
           </fieldset>
           <label className="grid gap-2 text-sm">
-            <span className="font-medium text-slate-600 dark:text-slate-300">Carga horaria semanal</span>
+            <span className="font-medium text-slate-600 dark:text-slate-300">Horas semanales</span>
             <input
               type="number"
               min={1}
               value={draft.weeklyHours}
-              onChange={(event) => setDraft((current) => ({ ...current, weeklyHours: Math.max(1, Number(event.target.value) || 1) }))}
-              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-            />
-          </label>
-          <label className="grid gap-2 text-sm">
-            <span className="font-medium text-slate-600 dark:text-slate-300">Bloques disponibles</span>
-            <input
-              value={draft.availableBlocks}
-              onChange={(event) => setDraft((current) => ({ ...current, availableBlocks: event.target.value }))}
+              onChange={(event) =>
+                setDraft((current) => ({ ...current, weeklyHours: Math.max(1, Number(event.target.value) || 1) }))
+              }
               className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
             />
           </label>

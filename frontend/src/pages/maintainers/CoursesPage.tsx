@@ -6,7 +6,8 @@ import {
   useSchedulerDataStore,
   type CourseData,
   FIXED_LEVELS,
-  DEFAULT_LEVEL_ID
+  DEFAULT_LEVEL_ID,
+  type ClassroomData
 } from '../../store/useSchedulerData'
 
 type CourseDraft = Omit<CourseData, 'id'>
@@ -20,19 +21,25 @@ const placeholderCycles: CycleConfig[] = [
   }
 ]
 
-function createEmptyCourse(cycles: CycleConfig[], levelId: string): CourseDraft {
+function buildCourseDraft(
+  cycles: CycleConfig[],
+  levelId: string,
+  classrooms: ClassroomData[]
+): CourseDraft {
   return {
     name: '',
     levelId,
     cycleId: cycles[0]?.id ?? '',
-    headTeacher: '',
-    students: 30
+    headTeacherId: null,
+    classroomId: classrooms[0]?.id ?? null
   }
 }
 
 export function CoursesPage() {
   const courses = useSchedulerDataStore((state) => state.courses)
   const levels = useSchedulerDataStore((state) => state.levels)
+  const teachers = useSchedulerDataStore((state) => state.teachers)
+  const classrooms = useSchedulerDataStore((state) => state.classrooms)
   const addCourse = useSchedulerDataStore((state) => state.addCourse)
   const updateCourse = useSchedulerDataStore((state) => state.updateCourse)
   const removeCourse = useSchedulerDataStore((state) => state.removeCourse)
@@ -46,20 +53,41 @@ export function CoursesPage() {
   const cycles = config?.cycles ?? placeholderCycles
   const levelMap = useMemo(() => new Map(levels.map((level) => [level.id, level.name])), [levels])
   const defaultLevelId = levels[0]?.id ?? DEFAULT_LEVEL_ID
-  const [draft, setDraft] = useState<CourseDraft>(() => createEmptyCourse(cycles, defaultLevelId))
+  const [draft, setDraft] = useState<CourseDraft>(() => buildCourseDraft(cycles, defaultLevelId, classrooms))
   const [editingId, setEditingId] = useState<number | null>(null)
 
   useEffect(() => {
-    setDraft((current) => ({
-      ...current,
-      cycleId: current.cycleId && cycles.some((cycle) => cycle.id === current.cycleId) ? current.cycleId : cycles[0]?.id ?? '',
-      levelId: FIXED_LEVELS.some((level) => level.id === current.levelId) ? current.levelId : defaultLevelId
-    }))
-  }, [cycles, defaultLevelId])
+    setDraft((current) => {
+      const nextLevelId = FIXED_LEVELS.some((level) => level.id === current.levelId)
+        ? current.levelId
+        : defaultLevelId
+      const availableClassrooms = classrooms.filter((classroom) => classroom.levelId === nextLevelId)
+      const nextClassroomId = availableClassrooms.some((classroom) => classroom.id === current.classroomId)
+        ? current.classroomId
+        : availableClassrooms[0]?.id ?? null
+
+      return {
+        ...current,
+        levelId: nextLevelId,
+        cycleId:
+          current.cycleId && cycles.some((cycle) => cycle.id === current.cycleId)
+            ? current.cycleId
+            : cycles[0]?.id ?? '',
+        classroomId: nextClassroomId,
+        headTeacherId:
+          (nextLevelId === 'media' ? current.headTeacherId : null) ??
+          (nextLevelId === 'media' && teachers.length > 0 ? teachers[0].id : null)
+      }
+    })
+  }, [cycles, defaultLevelId, classrooms, teachers])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!draft.name.trim() || !draft.levelId || !draft.headTeacher.trim() || !draft.cycleId) {
+    if (!draft.name.trim() || !draft.levelId || !draft.cycleId || !draft.classroomId) {
+      return
+    }
+
+    if (draft.levelId === 'media' && !draft.headTeacherId) {
       return
     }
 
@@ -69,7 +97,7 @@ export function CoursesPage() {
       addCourse(draft)
     }
 
-    setDraft(createEmptyCourse(cycles, defaultLevelId))
+    setDraft(buildCourseDraft(cycles, defaultLevelId, classrooms))
     setEditingId(null)
   }
 
@@ -79,14 +107,14 @@ export function CoursesPage() {
       name: course.name,
       levelId: course.levelId,
       cycleId: course.cycleId,
-      headTeacher: course.headTeacher,
-      students: course.students
+      headTeacherId: course.headTeacherId,
+      classroomId: course.classroomId
     })
   }
 
   const handleCancel = () => {
     setEditingId(null)
-    setDraft(createEmptyCourse(cycles, defaultLevelId))
+    setDraft(buildCourseDraft(cycles, defaultLevelId, classrooms))
   }
 
   const handleDelete = (id: number) => {
@@ -110,20 +138,22 @@ export function CoursesPage() {
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Nivel</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Ciclo</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Profesor jefe</th>
-                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Alumnos</th>
+                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Aula</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {courses.map((course) => {
                 const cycleName = cycles.find((cycle) => cycle.id === course.cycleId)?.name ?? course.cycleId
+                const headTeacherName = teachers.find((teacher) => teacher.id === course.headTeacherId)?.name ?? 'Sin asignar'
+                const classroomName = classrooms.find((classroom) => classroom.id === course.classroomId)?.name ?? 'Sin aula'
                 return (
                   <tr key={course.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
                     <td className="px-4 py-3 font-medium">{course.name}</td>
                     <td className="px-4 py-3">{levelMap.get(course.levelId) ?? course.levelId}</td>
                     <td className="px-4 py-3">{cycleName}</td>
-                    <td className="px-4 py-3">{course.headTeacher}</td>
-                    <td className="px-4 py-3">{course.students}</td>
+                    <td className="px-4 py-3">{course.levelId === 'media' ? headTeacherName : 'No aplica'}</td>
+                    <td className="px-4 py-3">{classroomName}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-3">
                         <button
@@ -165,6 +195,7 @@ export function CoursesPage() {
             <input
               value={draft.name}
               onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))}
+              maxLength={50}
               className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
               required
             />
@@ -199,26 +230,61 @@ export function CoursesPage() {
               ))}
             </select>
           </label>
+          {draft.levelId === 'media' && (
+            <label className="grid gap-2 text-sm">
+              <span className="font-medium text-slate-600 dark:text-slate-300">Profesor jefe</span>
+              <select
+                value={draft.headTeacherId ?? ''}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    headTeacherId: event.target.value === '' ? null : Number(event.target.value)
+                  }))
+                }
+                className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                required
+              >
+                <option value="" disabled>
+                  Selecciona un profesor
+                </option>
+                {teachers.map((teacher) => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.name}
+                  </option>
+                ))}
+              </select>
+              {teachers.length === 0 && (
+                <p className="text-xs text-rose-500">Necesitas registrar al menos un profesor antes de asignarlo.</p>
+              )}
+            </label>
+          )}
           <label className="grid gap-2 text-sm">
-            <span className="font-medium text-slate-600 dark:text-slate-300">Profesor jefe</span>
-            <input
-              value={draft.headTeacher}
-              onChange={(event) => setDraft((current) => ({ ...current, headTeacher: event.target.value }))}
-              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-              required
-            />
-          </label>
-          <label className="grid gap-2 text-sm">
-            <span className="font-medium text-slate-600 dark:text-slate-300">Cantidad de alumnos</span>
-            <input
-              type="number"
-              min={1}
-              value={draft.students}
+            <span className="font-medium text-slate-600 dark:text-slate-300">Aula</span>
+            <select
+              value={draft.classroomId ?? ''}
               onChange={(event) =>
-                setDraft((current) => ({ ...current, students: Math.max(1, Number(event.target.value) || 1) }))
+                setDraft((current) => ({
+                  ...current,
+                  classroomId: event.target.value === '' ? null : Number(event.target.value)
+                }))
               }
               className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-            />
+              required
+            >
+              <option value="" disabled>
+                Selecciona un aula
+              </option>
+              {classrooms
+                .filter((classroom) => classroom.levelId === draft.levelId)
+                .map((classroom) => (
+                  <option key={classroom.id} value={classroom.id}>
+                    {classroom.name}
+                  </option>
+                ))}
+            </select>
+            {classrooms.filter((classroom) => classroom.levelId === draft.levelId).length === 0 && (
+              <p className="text-xs text-rose-500">No existen aulas para este nivel. Regístralas antes de continuar.</p>
+            )}
           </label>
           <div className="flex items-center gap-3">
             <button type="submit" className="rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white">

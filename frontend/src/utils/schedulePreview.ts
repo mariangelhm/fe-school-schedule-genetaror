@@ -207,7 +207,7 @@ function distributeSessions(
         if (!info.subjects.includes(subjectName)) {
           return false
         }
-        if (courseCycleId && info.teacher.cycles.length > 0 && !info.teacher.cycles.includes(courseCycleId)) {
+        if (courseCycleId && info.teacher.cycleId && info.teacher.cycleId !== courseCycleId) {
           return false
         }
         return true

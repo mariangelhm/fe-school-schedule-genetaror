@@ -25,6 +25,18 @@ export function ConfigPanel() {
           name: 'Ciclo Básico I',
           levels: ['1° Básico', '2° Básico', '3° Básico'],
           endTime: '13:00'
+        },
+        {
+          id: 'ciclo-basico-ii',
+          name: 'Ciclo Básico II',
+          levels: ['4° Básico', '5° Básico'],
+          endTime: '15:00'
+        },
+        {
+          id: 'ciclo-media',
+          name: 'Ciclo Media',
+          levels: ['1° Medio', '2° Medio', '3° Medio', '4° Medio'],
+          endTime: '17:00'
         }
       ]
     }
@@ -78,6 +90,7 @@ export function ConfigPanel() {
           <input
             value={schoolName}
             onChange={(event) => setSchoolName(event.target.value)}
+            maxLength={50}
             className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
           />
         </label>
@@ -194,6 +207,7 @@ export function ConfigPanel() {
                             )
                           )
                         }
+                        maxLength={50}
                         className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                       />
                     </label>

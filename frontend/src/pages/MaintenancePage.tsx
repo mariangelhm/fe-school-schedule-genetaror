@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 const resources = [
   { name: 'Asignaturas', href: '/maintenance/subjects' },
   { name: 'Cursos', href: '/maintenance/courses' },
-  { name: 'Profesores', href: '/maintenance/teachers' }
+  { name: 'Profesores', href: '/maintenance/teachers' },
+  { name: 'Aulas', href: '/maintenance/classrooms' }
 ]
 
 export function MaintenancePage() {

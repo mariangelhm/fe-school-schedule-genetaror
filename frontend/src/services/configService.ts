@@ -45,6 +45,12 @@ const defaultConfig: Required<
       name: 'Ciclo Básico II',
       levels: ['4° Básico', '5° Básico'],
       endTime: '15:00'
+    },
+    {
+      id: 'ciclo-media',
+      name: 'Ciclo Media',
+      levels: ['1° Medio', '2° Medio', '3° Medio', '4° Medio'],
+      endTime: '17:00'
     }
   ]
 }

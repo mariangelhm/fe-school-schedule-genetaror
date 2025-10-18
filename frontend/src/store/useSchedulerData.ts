@@ -24,13 +24,19 @@ export interface SubjectData {
   color: string
 }
 
+export interface ClassroomData {
+  id: number
+  name: string
+  levelId: string
+}
+
 export interface CourseData {
   id: number
   name: string
   levelId: string
   cycleId: string
-  headTeacher: string
-  students: number
+  headTeacherId: number | null
+  classroomId: number | null
 }
 
 export interface TeacherData {
@@ -38,16 +44,19 @@ export interface TeacherData {
   name: string
   contractType: ContractType
   subjects: string[]
-  cycles: string[]
+  cycleId: string
   weeklyHours: number
-  availableBlocks: string
 }
 
 interface SchedulerState {
   levels: LevelData[]
+  classrooms: ClassroomData[]
   subjects: SubjectData[]
   courses: CourseData[]
   teachers: TeacherData[]
+  addClassroom: (classroom: Omit<ClassroomData, 'id'>) => void
+  removeClassroom: (id: number) => void
+  updateClassroom: (id: number, classroom: Omit<ClassroomData, 'id'>) => void
   addSubject: (subject: Omit<SubjectData, 'id'>) => void
   removeSubject: (id: number) => void
   updateSubject: (id: number, subject: Omit<SubjectData, 'id'>) => void
@@ -67,8 +76,13 @@ export const FIXED_LEVELS: LevelData[] = [
 
 export const DEFAULT_LEVEL_ID = FIXED_LEVELS[0].id
 
-const defaultState: Pick<SchedulerState, 'levels' | 'subjects' | 'courses' | 'teachers'> = {
+const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 'courses' | 'teachers'> = {
   levels: FIXED_LEVELS,
+  classrooms: [
+    { id: 0, name: 'Sala Jardín', levelId: 'parvulario' },
+    { id: 1, name: 'Sala 101', levelId: 'basico' },
+    { id: 2, name: 'Sala Multimedia', levelId: 'media' }
+  ],
   subjects: [
     {
       id: 1,
@@ -113,16 +127,16 @@ const defaultState: Pick<SchedulerState, 'levels' | 'subjects' | 'courses' | 'te
       name: '1° Básico A',
       levelId: 'basico',
       cycleId: 'ciclo-basico-i',
-      headTeacher: 'María López',
-      students: 32
+      headTeacherId: 1,
+      classroomId: 1
     },
     {
       id: 2,
-      name: '2° Básico B',
-      levelId: 'basico',
-      cycleId: 'ciclo-basico-i',
-      headTeacher: 'Carlos Rivas',
-      students: 29
+      name: '3° Medio A',
+      levelId: 'media',
+      cycleId: 'ciclo-media',
+      headTeacherId: 2,
+      classroomId: 2
     }
   ],
   teachers: [
@@ -131,18 +145,16 @@ const defaultState: Pick<SchedulerState, 'levels' | 'subjects' | 'courses' | 'te
       name: 'Ana Torres',
       contractType: 'Completo',
       subjects: ['Lenguaje', 'Historia'],
-      cycles: ['ciclo-basico-i', 'ciclo-basico-ii'],
-      weeklyHours: 38,
-      availableBlocks: 'Lun-Vie 08:00-16:00'
+      cycleId: 'ciclo-basico-i',
+      weeklyHours: 38
     },
     {
       id: 2,
       name: 'Luis Gómez',
       contractType: 'Parcial',
       subjects: ['Música'],
-      cycles: ['ciclo-basico-i', 'ciclo-basico-ii'],
-      weeklyHours: 18,
-      availableBlocks: 'Mar-Jue 11:00-17:00'
+      cycleId: 'ciclo-media',
+      weeklyHours: 18
     }
   ]
 }
@@ -158,6 +170,18 @@ export const useSchedulerDataStore = create<SchedulerState>()(
   persist(
     (set) => ({
       ...defaultState,
+      addClassroom: (classroom) =>
+        set((state) => ({
+          classrooms: [{ id: Date.now(), ...classroom }, ...state.classrooms]
+        })),
+      updateClassroom: (id, classroom) =>
+        set((state) => ({
+          classrooms: state.classrooms.map((item) => (item.id === id ? { id, ...classroom } : item))
+        })),
+      removeClassroom: (id) =>
+        set((state) => ({
+          classrooms: state.classrooms.filter((classroom) => classroom.id !== id)
+        })),
       addSubject: (subject) =>
         set((state) => ({
           subjects: [{ id: Date.now(), ...subject, levelIds: ensureSubjectLevels(subject.levelIds) }, ...state.subjects]
@@ -178,7 +202,16 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             ? course.levelId
             : DEFAULT_LEVEL_ID
           return {
-            courses: [{ id: Date.now(), ...course, levelId: validLevelId }, ...state.courses]
+            courses: [
+              {
+                id: Date.now(),
+                ...course,
+                levelId: validLevelId,
+                headTeacherId: course.headTeacherId ?? null,
+                classroomId: course.classroomId ?? null
+              },
+              ...state.courses
+            ]
           }
         }),
       updateCourse: (id, course) =>
@@ -187,7 +220,17 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             ? course.levelId
             : DEFAULT_LEVEL_ID
           return {
-            courses: state.courses.map((item) => (item.id === id ? { id, ...course, levelId: validLevelId } : item))
+            courses: state.courses.map((item) =>
+              item.id === id
+                ? {
+                    id,
+                    ...course,
+                    levelId: validLevelId,
+                    headTeacherId: course.headTeacherId ?? null,
+                    classroomId: course.classroomId ?? null
+                  }
+                : item
+            )
           }
         }),
       removeCourse: (id) =>
@@ -196,11 +239,18 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         })),
       addTeacher: (teacher) =>
         set((state) => ({
-          teachers: [{ id: Date.now(), ...teacher }, ...state.teachers]
+          teachers: [
+            {
+              id: Date.now(),
+              ...teacher,
+              cycleId: teacher.cycleId
+            },
+            ...state.teachers
+          ]
         })),
       updateTeacher: (id, teacher) =>
         set((state) => ({
-          teachers: state.teachers.map((item) => (item.id === id ? { id, ...teacher } : item))
+          teachers: state.teachers.map((item) => (item.id === id ? { id, ...teacher, cycleId: teacher.cycleId } : item))
         })),
       removeTeacher: (id) =>
         set((state) => ({
@@ -209,17 +259,10 @@ export const useSchedulerDataStore = create<SchedulerState>()(
     }),
     {
       name: 'scheduler-data-store',
-      version: 4,
-      migrate: (persistedState: any, version) => {
+      version: 5,
+      migrate: (persistedState: any) => {
         if (!persistedState) {
           return persistedState as SchedulerState
-        }
-
-        if (version >= 4) {
-          return {
-            ...persistedState,
-            levels: FIXED_LEVELS
-          } as SchedulerState
         }
 
         const normaliseList = (input: unknown): string[] => {
@@ -282,36 +325,72 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           }
         })
 
+        const legacyClassrooms = Array.isArray(persistedState.classrooms) ? persistedState.classrooms : []
+        const classrooms: ClassroomData[] = legacyClassrooms
+          .map((classroom: any, index: number) => {
+            const levelId = FIXED_LEVELS.some((level) => level.id === classroom?.levelId)
+              ? classroom.levelId
+              : DEFAULT_LEVEL_ID
+
+            return {
+              id: classroom?.id ?? Date.now() + index,
+              name: `${classroom?.name ?? 'Aula'}`.slice(0, 50),
+              levelId
+            }
+          })
+          .filter((classroom: ClassroomData) => classroom.name.trim().length > 0)
+
+        const legacyTeachers = Array.isArray(persistedState.teachers) ? persistedState.teachers : []
+        const teachers: TeacherData[] = legacyTeachers.map((teacher: any, index: number) => {
+          const subjects = normaliseList(teacher?.subjects)
+          const cycleId = typeof teacher?.cycleId === 'string' && teacher.cycleId.trim().length > 0
+            ? teacher.cycleId
+            : Array.isArray(teacher?.cycles) && teacher.cycles.length > 0
+            ? `${teacher.cycles[0]}`
+            : defaultState.teachers[0].cycleId
+
+          return {
+            id: teacher?.id ?? Date.now() + index,
+            name: `${teacher?.name ?? 'Profesor'}`.slice(0, 50),
+            contractType: teacher?.contractType === 'Parcial' ? 'Parcial' : 'Completo',
+            subjects,
+            cycleId,
+            weeklyHours: Math.max(0, Number(teacher?.weeklyHours) || 0)
+          }
+        })
+
+        const teacherNameMap = new Map(
+          teachers.map((teacher) => [teacher.name.toLowerCase(), teacher.id])
+        )
+
         const legacyCourses = Array.isArray(persistedState.courses) ? persistedState.courses : []
         const courses: CourseData[] = legacyCourses.map((course: any, index: number) => {
           const levelNames = normaliseList(course?.level)
           const levelId = levelNames.length > 0 ? ensureLevel(levelNames[0]) : DEFAULT_LEVEL_ID
+          const headTeacherId =
+            typeof course?.headTeacherId === 'number'
+              ? course.headTeacherId
+              : (() => {
+                  const teacherName = `${course?.headTeacher ?? ''}`.toLowerCase()
+                  return teacherNameMap.get(teacherName) ?? null
+                })()
+          const classroomId = typeof course?.classroomId === 'number'
+            ? course.classroomId
+            : classrooms[0]?.id ?? defaultState.classrooms[0]?.id ?? null
 
           return {
             id: course?.id ?? Date.now() + index,
             name: `${course?.name ?? 'Curso'}`,
             levelId,
             cycleId: `${course?.cycleId ?? 'ciclo-basico-i'}`,
-            headTeacher: `${course?.headTeacher ?? ''}`,
-            students: Math.max(0, Number(course?.students) || 0)
+            headTeacherId,
+            classroomId
           }
         })
 
-        const legacyTeachers = Array.isArray(persistedState.teachers) ? persistedState.teachers : []
-        const teachers: TeacherData[] = legacyTeachers.map((teacher: any, index: number) => ({
-          id: teacher?.id ?? Date.now() + index,
-          name: `${teacher?.name ?? 'Profesor'}`,
-          contractType: teacher?.contractType === 'Parcial' ? 'Parcial' : 'Completo',
-          subjects: normaliseList(teacher?.subjects),
-          cycles: Array.isArray(teacher?.cycles)
-            ? teacher.cycles.map((cycle: any) => `${cycle}`)
-            : ['ciclo-basico-i', 'ciclo-basico-ii'],
-          weeklyHours: Math.max(0, Number(teacher?.weeklyHours) || 0),
-          availableBlocks: `${teacher?.availableBlocks ?? ''}`
-        }))
-
         return {
           levels: FIXED_LEVELS,
+          classrooms: classrooms.length > 0 ? classrooms : defaultState.classrooms,
           subjects: subjects.length > 0 ? subjects : defaultState.subjects,
           courses: courses.length > 0 ? courses : defaultState.courses,
           teachers: teachers.length > 0 ? teachers : defaultState.teachers
