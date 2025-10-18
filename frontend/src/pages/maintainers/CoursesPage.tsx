@@ -2,7 +2,12 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import { fetchConfig, type CycleConfig } from '../../services/configService'
-import { useSchedulerDataStore, type CourseData } from '../../store/useSchedulerData'
+import {
+  useSchedulerDataStore,
+  type CourseData,
+  FIXED_LEVELS,
+  DEFAULT_LEVEL_ID
+} from '../../store/useSchedulerData'
 
 type CourseDraft = Omit<CourseData, 'id'>
 
@@ -40,7 +45,7 @@ export function CoursesPage() {
 
   const cycles = config?.cycles ?? placeholderCycles
   const levelMap = useMemo(() => new Map(levels.map((level) => [level.id, level.name])), [levels])
-  const defaultLevelId = levels[0]?.id ?? 'general'
+  const defaultLevelId = levels[0]?.id ?? DEFAULT_LEVEL_ID
   const [draft, setDraft] = useState<CourseDraft>(() => createEmptyCourse(cycles, defaultLevelId))
   const [editingId, setEditingId] = useState<number | null>(null)
 
@@ -48,9 +53,9 @@ export function CoursesPage() {
     setDraft((current) => ({
       ...current,
       cycleId: current.cycleId && cycles.some((cycle) => cycle.id === current.cycleId) ? current.cycleId : cycles[0]?.id ?? '',
-      levelId: levels.some((level) => level.id === current.levelId) ? current.levelId : defaultLevelId
+      levelId: FIXED_LEVELS.some((level) => level.id === current.levelId) ? current.levelId : defaultLevelId
     }))
-  }, [cycles, defaultLevelId, levels])
+  }, [cycles, defaultLevelId])
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

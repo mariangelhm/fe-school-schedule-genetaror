@@ -7,7 +7,6 @@ type ContractType = 'Completo' | 'Parcial'
 export interface LevelData {
   id: string
   name: string
-  description?: string
 }
 
 export interface SubjectCycleLoad {
@@ -49,9 +48,6 @@ interface SchedulerState {
   subjects: SubjectData[]
   courses: CourseData[]
   teachers: TeacherData[]
-  addLevel: (level: Omit<LevelData, 'id'>) => void
-  updateLevel: (id: string, level: Omit<LevelData, 'id'>) => void
-  removeLevel: (id: string) => void
   addSubject: (subject: Omit<SubjectData, 'id'>) => void
   removeSubject: (id: number) => void
   updateSubject: (id: number, subject: Omit<SubjectData, 'id'>) => void
@@ -63,24 +59,21 @@ interface SchedulerState {
   updateTeacher: (id: number, teacher: Omit<TeacherData, 'id'>) => void
 }
 
-const GENERAL_LEVEL_ID = 'general'
-
-const defaultLevels: LevelData[] = [
-  { id: GENERAL_LEVEL_ID, name: 'General' },
-  { id: 'nivel-1-basico', name: '1° Básico' },
-  { id: 'nivel-2-basico', name: '2° Básico' },
-  { id: 'nivel-3-basico', name: '3° Básico' },
-  { id: 'nivel-4-basico', name: '4° Básico' },
-  { id: 'nivel-5-basico', name: '5° Básico' }
+export const FIXED_LEVELS: LevelData[] = [
+  { id: 'parvulario', name: 'Parvulario' },
+  { id: 'basico', name: 'Básico' },
+  { id: 'media', name: 'Media' }
 ]
 
+export const DEFAULT_LEVEL_ID = FIXED_LEVELS[0].id
+
 const defaultState: Pick<SchedulerState, 'levels' | 'subjects' | 'courses' | 'teachers'> = {
-  levels: defaultLevels,
+  levels: FIXED_LEVELS,
   subjects: [
     {
       id: 1,
       name: 'Lenguaje',
-      levelIds: ['nivel-1-basico', 'nivel-2-basico'],
+      levelIds: ['basico'],
       cycleLoads: [
         { cycleId: 'ciclo-basico-i', weeklyBlocks: 6 },
         { cycleId: 'ciclo-basico-ii', weeklyBlocks: 4 }
@@ -92,7 +85,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'subjects' | 'courses' | 'te
     {
       id: 2,
       name: 'Matemática',
-      levelIds: ['nivel-1-basico', 'nivel-2-basico'],
+      levelIds: ['basico'],
       cycleLoads: [
         { cycleId: 'ciclo-basico-i', weeklyBlocks: 5 },
         { cycleId: 'ciclo-basico-ii', weeklyBlocks: 4 }
@@ -104,7 +97,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'subjects' | 'courses' | 'te
     {
       id: 3,
       name: 'Música',
-      levelIds: [GENERAL_LEVEL_ID],
+      levelIds: ['parvulario', 'basico'],
       cycleLoads: [
         { cycleId: 'ciclo-basico-i', weeklyBlocks: 2 },
         { cycleId: 'ciclo-basico-ii', weeklyBlocks: 2 }
@@ -118,7 +111,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'subjects' | 'courses' | 'te
     {
       id: 1,
       name: '1° Básico A',
-      levelId: 'nivel-1-basico',
+      levelId: 'basico',
       cycleId: 'ciclo-basico-i',
       headTeacher: 'María López',
       students: 32
@@ -126,7 +119,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'subjects' | 'courses' | 'te
     {
       id: 2,
       name: '2° Básico B',
-      levelId: 'nivel-2-basico',
+      levelId: 'basico',
       cycleId: 'ciclo-basico-i',
       headTeacher: 'Carlos Rivas',
       students: 29
@@ -154,66 +147,17 @@ const defaultState: Pick<SchedulerState, 'levels' | 'subjects' | 'courses' | 'te
   ]
 }
 
-function slugify(value: string): string {
-  return value
-    .normalize('NFD')
-    .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
-    .replace(/(^-|-$)/g, '')
-    .toLowerCase()
-}
-
-function createLevelId(name: string, existing: LevelData[]): string {
-  const base = slugify(name) || `nivel-${Date.now()}`
-  let candidate = base
-  let counter = 1
-
-  while (existing.some((level) => level.id === candidate)) {
-    candidate = `${base}-${counter}`
-    counter++
-  }
-
-  return candidate
-}
-
 function ensureSubjectLevels(levelIds: string[]): string[] {
-  const unique = Array.from(new Set(levelIds.filter(Boolean)))
-  return unique.length > 0 ? unique : [GENERAL_LEVEL_ID]
+  const unique = Array.from(
+    new Set(levelIds.filter((levelId) => FIXED_LEVELS.some((level) => level.id === levelId)))
+  )
+  return unique.length > 0 ? unique : [DEFAULT_LEVEL_ID]
 }
 
 export const useSchedulerDataStore = create<SchedulerState>()(
   persist(
     (set) => ({
       ...defaultState,
-      addLevel: (level) =>
-        set((state) => {
-          const id = createLevelId(level.name, state.levels)
-          return {
-            levels: [{ id, ...level }, ...state.levels]
-          }
-        }),
-      updateLevel: (id, level) =>
-        set((state) => ({
-          levels: state.levels.map((item) => (item.id === id ? { id, ...level } : item))
-        })),
-      removeLevel: (id) =>
-        set((state) => {
-          if (id === GENERAL_LEVEL_ID) {
-            return state
-          }
-
-          const remainingLevels = state.levels.filter((level) => level.id !== id)
-          return {
-            levels: remainingLevels,
-            courses: state.courses.map((course) => ({
-              ...course,
-              levelId: course.levelId === id ? GENERAL_LEVEL_ID : course.levelId
-            })),
-            subjects: state.subjects.map((subject) => {
-              const nextLevelIds = subject.levelIds.filter((levelId) => levelId !== id)
-              return { ...subject, levelIds: ensureSubjectLevels(nextLevelIds) }
-            })
-          }
-        }),
       addSubject: (subject) =>
         set((state) => ({
           subjects: [{ id: Date.now(), ...subject, levelIds: ensureSubjectLevels(subject.levelIds) }, ...state.subjects]
@@ -230,18 +174,18 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         })),
       addCourse: (course) =>
         set((state) => {
-          const validLevelId = state.levels.some((level) => level.id === course.levelId)
+          const validLevelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
             ? course.levelId
-            : GENERAL_LEVEL_ID
+            : DEFAULT_LEVEL_ID
           return {
             courses: [{ id: Date.now(), ...course, levelId: validLevelId }, ...state.courses]
           }
         }),
       updateCourse: (id, course) =>
         set((state) => {
-          const validLevelId = state.levels.some((level) => level.id === course.levelId)
+          const validLevelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
             ? course.levelId
-            : GENERAL_LEVEL_ID
+            : DEFAULT_LEVEL_ID
           return {
             courses: state.courses.map((item) => (item.id === id ? { id, ...course, levelId: validLevelId } : item))
           }
@@ -265,24 +209,18 @@ export const useSchedulerDataStore = create<SchedulerState>()(
     }),
     {
       name: 'scheduler-data-store',
-      version: 3,
+      version: 4,
       migrate: (persistedState: any, version) => {
         if (!persistedState) {
           return persistedState as SchedulerState
         }
 
-        if (version >= 3) {
+        if (version >= 4) {
           return {
             ...persistedState,
-            levels:
-              Array.isArray(persistedState.levels) && persistedState.levels.length > 0
-                ? persistedState.levels
-                : defaultState.levels
+            levels: FIXED_LEVELS
           } as SchedulerState
         }
-
-        const levelMap = new Map<string, LevelData>()
-        defaultLevels.forEach((level) => levelMap.set(level.id, level))
 
         const normaliseList = (input: unknown): string[] => {
           if (Array.isArray(input)) {
@@ -298,15 +236,14 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         }
 
         const ensureLevel = (name: string): string => {
-          const trimmed = name.trim()
-          if (!trimmed) {
-            return GENERAL_LEVEL_ID
-          }
-          const slug = slugify(trimmed) || GENERAL_LEVEL_ID
-          if (!levelMap.has(slug)) {
-            levelMap.set(slug, { id: slug, name: trimmed })
-          }
-          return slug
+          const slug = name
+            .normalize('NFD')
+            .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
+            .replace(/(^-|-$)/g, '')
+            .toLowerCase()
+
+          const match = FIXED_LEVELS.find((level) => level.id === slug || level.name.toLowerCase() === name.toLowerCase())
+          return match?.id ?? DEFAULT_LEVEL_ID
         }
 
         const ensureCycleLoads = (subject: any): SubjectCycleLoad[] => {
@@ -332,7 +269,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         const legacySubjects = Array.isArray(persistedState.subjects) ? persistedState.subjects : []
         const subjects: SubjectData[] = legacySubjects.map((subject: any, index: number) => {
           const levelNames = normaliseList(subject?.level)
-          const levelIds = levelNames.length > 0 ? levelNames.map(ensureLevel) : [GENERAL_LEVEL_ID]
+          const levelIds = levelNames.length > 0 ? levelNames.map(ensureLevel) : [DEFAULT_LEVEL_ID]
 
           return {
             id: subject?.id ?? Date.now() + index,
@@ -348,7 +285,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         const legacyCourses = Array.isArray(persistedState.courses) ? persistedState.courses : []
         const courses: CourseData[] = legacyCourses.map((course: any, index: number) => {
           const levelNames = normaliseList(course?.level)
-          const levelId = levelNames.length > 0 ? ensureLevel(levelNames[0]) : GENERAL_LEVEL_ID
+          const levelId = levelNames.length > 0 ? ensureLevel(levelNames[0]) : DEFAULT_LEVEL_ID
 
           return {
             id: course?.id ?? Date.now() + index,
@@ -374,7 +311,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         }))
 
         return {
-          levels: Array.from(levelMap.values()),
+          levels: FIXED_LEVELS,
           subjects: subjects.length > 0 ? subjects : defaultState.subjects,
           courses: courses.length > 0 ? courses : defaultState.courses,
           teachers: teachers.length > 0 ? teachers : defaultState.teachers

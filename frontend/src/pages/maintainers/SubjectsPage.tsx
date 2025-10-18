@@ -6,7 +6,9 @@ import {
   useSchedulerDataStore,
   type SubjectCycleLoad,
   type SubjectData,
-  type SubjectType
+  type SubjectType,
+  FIXED_LEVELS,
+  DEFAULT_LEVEL_ID
 } from '../../store/useSchedulerData'
 
 interface SubjectDraft {
@@ -76,25 +78,18 @@ export function SubjectsPage() {
     return Array.from(ids)
   }, [courses])
 
-  const generalLevelId = useMemo(() => {
-    const general = levels.find((level) => level.name.toLowerCase() === 'general' || level.id === 'general')
-    return general?.id ?? 'general'
-  }, [levels])
-
   const levelOptions = useMemo(() => {
-    const sourceIds = derivedLevelIds.length > 0 ? derivedLevelIds : levels.map((level) => level.id)
-    const uniqueIds = Array.from(new Set([...sourceIds, generalLevelId]))
-    return uniqueIds
-      .map((id) => ({ id, name: levelMap.get(id) ?? id }))
-      .filter((option) => option.name.trim().length > 0)
-  }, [derivedLevelIds, generalLevelId, levelMap, levels])
+    if (derivedLevelIds.length > 0) {
+      return derivedLevelIds
+        .map((id) => ({ id, name: levelMap.get(id) ?? id }))
+        .filter((option) => option.name.trim().length > 0)
+    }
+    return FIXED_LEVELS.map((level) => ({ id: level.id, name: level.name }))
+  }, [derivedLevelIds, levelMap])
 
   const defaultLevelSelection = useMemo(() => {
-    if (levelOptions.length === 0) {
-      return [generalLevelId]
-    }
-    return [levelOptions[0].id]
-  }, [generalLevelId, levelOptions])
+    return levelOptions.length > 0 ? [levelOptions[0].id] : [DEFAULT_LEVEL_ID]
+  }, [levelOptions])
 
   const [draft, setDraft] = useState<SubjectDraft>(() => createEmptyDraft(cycleOptions, defaultLevelSelection))
   const [editingId, setEditingId] = useState<number | null>(null)

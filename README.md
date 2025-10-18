@@ -8,7 +8,7 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 - Tipado completo en TypeScript y linting con ESLint + Prettier.
 - Gestión de estado ligero con Zustand y consultas asíncronas con React Query.
 - Mantenedores con datos persistidos en el navegador para trabajar sin backend durante las demos y soportar edición completa.
-- Gestión integrada de niveles académicos para relacionar asignaturas, cursos y docentes desde una única fuente.
+- Uso de una lista fija de niveles académicos (Parvulario, Básico y Media) compartida entre asignaturas, cursos y docentes.
 - Previsualización de horarios que respeta configuraciones globales antes de confirmar la generación real.
 - Reacomodo manual de bloques por drag & drop, ciclos académicos configurables y bloque de almuerzo visible en el calendario.
 - Configuraciones de niveles y cargas horarias totalmente desconectadas de feriados/eventos (el mantenedor se concentra en académica pura).
@@ -19,6 +19,7 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 
 - **Ciclos académicos:** define nombre, niveles asociados y hora de término diaria para cada ciclo. Estos valores limitan automáticamente la cantidad de bloques que puede tener un curso por día y semana.
 - **Asignaturas por ciclo:** configura cuántos bloques debe cursar cada ciclo para una asignatura específica y establece límites máximos diarios antes de generar los horarios.
+- **Niveles predefinidos:** las pantallas de asignaturas, cursos y profesores utilizan siempre los niveles "Parvulario", "Básico" y "Media" para mantener consistencia con el backend y evitar configuraciones incongruentes.
 - **Bloque de almuerzo:** especifica el inicio y duración del almuerzo. El bloque aparece resaltado en las previsualizaciones y se descuenta de la capacidad diaria disponible.
 - **Previsualización editable:** antes de generar los horarios definitivos puedes arrastrar cada clase a otro día o bloque para ajustar manualmente la malla.
 - Todas las configuraciones se guardan en el navegador (localStorage) cuando no hay backend disponible, permitiendo demos sin conexión.

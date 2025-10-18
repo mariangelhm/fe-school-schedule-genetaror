@@ -526,10 +526,6 @@ export function buildSchedulePreview(input: BuildPreviewInput): { preview?: Sche
           (levelMap.get(levelId) ?? levelId).toLowerCase()
         )
 
-        if (subjectLevelNames.includes('general')) {
-          return true
-        }
-
         return subjectLevelNames.includes(courseLevelName)
       })
       .map((subject) => ({
