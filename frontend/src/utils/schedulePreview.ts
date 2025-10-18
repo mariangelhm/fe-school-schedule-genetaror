@@ -85,7 +85,13 @@ function minutesToRange(start: number, duration: number): string {
 }
 
 function normaliseName(value: string) {
-  return value.trim().toLowerCase()
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^\p{Letter}\p{Number}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
 }
 
 function getLevelName(levelId: string, levels: LevelData[]): string {
@@ -93,16 +99,18 @@ function getLevelName(levelId: string, levels: LevelData[]): string {
 }
 
 function resolveCourseCycle(course: CourseData, levels: LevelData[], cycles: CycleConfig[] = []) {
-  if (course.cycleId) {
-    const byId = cycles.find((cycle) => cycle.id === course.cycleId)
-    if (byId) {
-      return byId
-    }
-  }
-
   const levelName = getLevelName(course.levelId, levels)
   const target = normaliseName(levelName)
-  return cycles.find((cycle) => cycle.levels.map(normaliseName).includes(target))
+  return cycles.find((cycle) =>
+    cycle.levels.some((level) => {
+      const normalisedLevel = normaliseName(level)
+      return (
+        normalisedLevel === target ||
+        normalisedLevel.includes(target) ||
+        target.includes(normalisedLevel)
+      )
+    })
+  )
 }
 
 function getWeeklyBlocksForCycle(subject: SubjectData, cycleId?: string) {

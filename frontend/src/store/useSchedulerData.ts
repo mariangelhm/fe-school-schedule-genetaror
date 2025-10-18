@@ -34,7 +34,6 @@ export interface CourseData {
   id: number
   name: string
   levelId: string
-  cycleId: string
   headTeacherId: number | null
   classroomId: number | null
 }
@@ -45,6 +44,7 @@ export interface TeacherData {
   contractType: ContractType
   subjects: string[]
   cycleId: string
+  courseId: number | null
   weeklyHours: number
 }
 
@@ -126,7 +126,6 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
       id: 1,
       name: '1° Básico A',
       levelId: 'basico',
-      cycleId: 'ciclo-basico-i',
       headTeacherId: 1,
       classroomId: 1
     },
@@ -134,7 +133,6 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
       id: 2,
       name: '3° Medio A',
       levelId: 'media',
-      cycleId: 'ciclo-media',
       headTeacherId: 2,
       classroomId: 2
     }
@@ -146,6 +144,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
       contractType: 'Completo',
       subjects: ['Lenguaje', 'Historia'],
       cycleId: 'ciclo-basico-i',
+      courseId: 1,
       weeklyHours: 38
     },
     {
@@ -154,6 +153,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
       contractType: 'Parcial',
       subjects: ['Música'],
       cycleId: 'ciclo-media',
+      courseId: 2,
       weeklyHours: 18
     }
   ]
@@ -171,13 +171,31 @@ export const useSchedulerDataStore = create<SchedulerState>()(
     (set) => ({
       ...defaultState,
       addClassroom: (classroom) =>
-        set((state) => ({
-          classrooms: [{ id: Date.now(), ...classroom }, ...state.classrooms]
-        })),
+        set((state) => {
+          const normalisedName = classroom.name.trim().toLowerCase()
+          const exists = state.classrooms.some(
+            (item) => item.name.trim().toLowerCase() === normalisedName
+          )
+          if (exists) {
+            return state
+          }
+          return {
+            classrooms: [{ id: Date.now(), ...classroom }, ...state.classrooms]
+          }
+        }),
       updateClassroom: (id, classroom) =>
-        set((state) => ({
-          classrooms: state.classrooms.map((item) => (item.id === id ? { id, ...classroom } : item))
-        })),
+        set((state) => {
+          const normalisedName = classroom.name.trim().toLowerCase()
+          const exists = state.classrooms.some(
+            (item) => item.id !== id && item.name.trim().toLowerCase() === normalisedName
+          )
+          if (exists) {
+            return state
+          }
+          return {
+            classrooms: state.classrooms.map((item) => (item.id === id ? { id, ...classroom } : item))
+          }
+        }),
       removeClassroom: (id) =>
         set((state) => ({
           classrooms: state.classrooms.filter((classroom) => classroom.id !== id)
@@ -201,17 +219,15 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           const validLevelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
             ? course.levelId
             : DEFAULT_LEVEL_ID
+          const newCourse = {
+            id: Date.now(),
+            ...course,
+            levelId: validLevelId,
+            headTeacherId: course.headTeacherId ?? null,
+            classroomId: course.classroomId ?? null
+          }
           return {
-            courses: [
-              {
-                id: Date.now(),
-                ...course,
-                levelId: validLevelId,
-                headTeacherId: course.headTeacherId ?? null,
-                classroomId: course.classroomId ?? null
-              },
-              ...state.courses
-            ]
+            courses: [newCourse, ...state.courses]
           }
         }),
       updateCourse: (id, course) =>
@@ -230,12 +246,22 @@ export const useSchedulerDataStore = create<SchedulerState>()(
                     classroomId: course.classroomId ?? null
                   }
                 : item
+            ),
+            teachers: state.teachers.map((teacher) =>
+              teacher.courseId === id
+                ? {
+                    ...teacher,
+                    cycleId: teacher.cycleId,
+                    courseId: id
+                  }
+                : teacher
             )
           }
         }),
       removeCourse: (id) =>
         set((state) => ({
-          courses: state.courses.filter((course) => course.id !== id)
+          courses: state.courses.filter((course) => course.id !== id),
+          teachers: state.teachers.filter((teacher) => teacher.courseId !== id)
         })),
       addTeacher: (teacher) =>
         set((state) => ({
@@ -243,14 +269,19 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             {
               id: Date.now(),
               ...teacher,
-              cycleId: teacher.cycleId
+              cycleId: teacher.cycleId,
+              courseId: teacher.courseId ?? null
             },
             ...state.teachers
           ]
         })),
       updateTeacher: (id, teacher) =>
         set((state) => ({
-          teachers: state.teachers.map((item) => (item.id === id ? { id, ...teacher, cycleId: teacher.cycleId } : item))
+          teachers: state.teachers.map((item) =>
+            item.id === id
+              ? { id, ...teacher, cycleId: teacher.cycleId, courseId: teacher.courseId ?? null }
+              : item
+          )
         })),
       removeTeacher: (id) =>
         set((state) => ({
@@ -259,7 +290,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
     }),
     {
       name: 'scheduler-data-store',
-      version: 5,
+      version: 6,
       migrate: (persistedState: any) => {
         if (!persistedState) {
           return persistedState as SchedulerState
@@ -349,12 +380,24 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             ? `${teacher.cycles[0]}`
             : defaultState.teachers[0].cycleId
 
+          const courseId =
+            typeof teacher?.courseId === 'number'
+              ? teacher.courseId
+              : typeof teacher?.course === 'number'
+              ? teacher.course
+              : (() => {
+                  const courseName = `${teacher?.course ?? teacher?.courseName ?? ''}`.toLowerCase()
+                  const match = legacyCourses.find((course: any) => `${course?.name ?? ''}`.toLowerCase() === courseName)
+                  return match?.id ?? null
+                })()
+
           return {
             id: teacher?.id ?? Date.now() + index,
             name: `${teacher?.name ?? 'Profesor'}`.slice(0, 50),
             contractType: teacher?.contractType === 'Parcial' ? 'Parcial' : 'Completo',
             subjects,
             cycleId,
+            courseId,
             weeklyHours: Math.max(0, Number(teacher?.weeklyHours) || 0)
           }
         })
@@ -380,20 +423,29 @@ export const useSchedulerDataStore = create<SchedulerState>()(
 
           return {
             id: course?.id ?? Date.now() + index,
-            name: `${course?.name ?? 'Curso'}`,
+            name: `${course?.name ?? 'Curso'}`.slice(0, 50),
             levelId,
-            cycleId: `${course?.cycleId ?? 'ciclo-basico-i'}`,
             headTeacherId,
             classroomId
           }
+        })
+
+        const validCourses = courses.length > 0 ? courses : defaultState.courses
+        const normalisedCourseIds = new Set(validCourses.map((course) => course.id))
+        const teachersWithCourses = teachers.map((teacher, teacherIndex) => {
+          if (teacher.courseId && normalisedCourseIds.has(teacher.courseId)) {
+            return teacher
+          }
+          const fallbackCourse = validCourses[teacherIndex % validCourses.length]
+          return { ...teacher, courseId: fallbackCourse?.id ?? null }
         })
 
         return {
           levels: FIXED_LEVELS,
           classrooms: classrooms.length > 0 ? classrooms : defaultState.classrooms,
           subjects: subjects.length > 0 ? subjects : defaultState.subjects,
-          courses: courses.length > 0 ? courses : defaultState.courses,
-          teachers: teachers.length > 0 ? teachers : defaultState.teachers
+          courses: validCourses,
+          teachers: teachersWithCourses.length > 0 ? teachersWithCourses : defaultState.teachers
         } as SchedulerState
       }
     }

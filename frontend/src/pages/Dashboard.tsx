@@ -11,6 +11,7 @@ export function Dashboard() {
   const classrooms = useSchedulerDataStore((state) => state.classrooms)
   const levels = useSchedulerDataStore((state) => state.levels)
   const levelMap = new Map(levels.map((level) => [level.id, level.name]))
+  const courseMap = new Map(courses.map((course) => [course.id, course.name]))
 
   return (
     <section className="grid gap-8">
@@ -63,7 +64,9 @@ export function Dashboard() {
           items={teachers.map((teacher) => ({
             id: teacher.id,
             primary: teacher.name,
-            secondary: `${teacher.subjects.length} asignaturas · Ciclo: ${teacher.cycleId}`
+            secondary: `${teacher.subjects.length} asignaturas · Curso: ${
+              teacher.courseId ? courseMap.get(teacher.courseId) ?? 'Sin curso' : 'Sin curso'
+            }`
           }))}
           footerLink={{ to: '/maintenance/teachers', label: 'Gestionar profesores' }}
         />

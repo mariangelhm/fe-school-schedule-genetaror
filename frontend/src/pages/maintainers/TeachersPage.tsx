@@ -1,8 +1,14 @@
-import { FormEvent, useEffect, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import { fetchConfig, type CycleConfig } from '../../services/configService'
-import { useSchedulerDataStore, type ContractType, type TeacherData } from '../../store/useSchedulerData'
+import {
+  useSchedulerDataStore,
+  type ContractType,
+  type TeacherData,
+  type CourseData,
+  type LevelData
+} from '../../store/useSchedulerData'
 
 type TeacherDraft = Omit<TeacherData, 'id'>
 
@@ -10,23 +16,65 @@ const placeholderCycles: CycleConfig[] = [
   {
     id: 'ciclo-basico-i',
     name: 'Ciclo Básico I',
-    levels: ['1° Básico', '2° Básico', '3° Básico'],
+    levels: ['Parvulario', '1° Básico', '2° Básico', '3° Básico'],
     endTime: '13:00'
   },
   {
     id: 'ciclo-media',
     name: 'Ciclo Media',
-    levels: ['1° Medio', '2° Medio', '3° Medio', '4° Medio'],
+    levels: ['Básico', 'Media'],
     endTime: '17:00'
   }
 ]
 
-function createEmptyTeacher(cycles: CycleConfig[]): TeacherDraft {
+function normalise(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .replace(/[^\p{Letter}\p{Number}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+}
+
+function resolveCycleForCourse(
+  course: CourseData | undefined,
+  levels: LevelData[],
+  cycles: CycleConfig[]
+): string {
+  if (!course || cycles.length === 0) {
+    return ''
+  }
+
+  const levelName = levels.find((level) => level.id === course.levelId)?.name ?? course.levelId
+  const target = normalise(levelName)
+  const matchedCycle = cycles.find((cycle) => cycle.levels.some((level) => normalise(level) === target))
+  if (matchedCycle) {
+    return matchedCycle.id
+  }
+
+  const fallback = cycles.find((cycle) =>
+    cycle.levels.some((level) => {
+      const normalisedLevel = normalise(level)
+      return normalisedLevel.includes(target) || target.includes(normalisedLevel)
+    })
+  )
+
+  return fallback?.id ?? cycles[0]?.id ?? ''
+}
+
+function createEmptyTeacher(
+  cycles: CycleConfig[],
+  courses: CourseData[],
+  levels: LevelData[]
+): TeacherDraft {
+  const defaultCourse = courses[0]
   return {
     name: '',
     contractType: 'Completo',
     subjects: [],
-    cycleId: cycles[0]?.id ?? '',
+    cycleId: resolveCycleForCourse(defaultCourse, levels, cycles),
+    courseId: defaultCourse?.id ?? null,
     weeklyHours: 30
   }
 }
@@ -34,6 +82,8 @@ function createEmptyTeacher(cycles: CycleConfig[]): TeacherDraft {
 export function TeachersPage() {
   const teachers = useSchedulerDataStore((state) => state.teachers)
   const subjectsData = useSchedulerDataStore((state) => state.subjects)
+  const courses = useSchedulerDataStore((state) => state.courses)
+  const levels = useSchedulerDataStore((state) => state.levels)
   const addTeacher = useSchedulerDataStore((state) => state.addTeacher)
   const updateTeacher = useSchedulerDataStore((state) => state.updateTeacher)
   const removeTeacher = useSchedulerDataStore((state) => state.removeTeacher)
@@ -45,19 +95,29 @@ export function TeachersPage() {
   })
 
   const cycles = config?.cycles ?? placeholderCycles
-  const [draft, setDraft] = useState<TeacherDraft>(() => createEmptyTeacher(cycles))
+  const cycleNameMap = useMemo(() => new Map(cycles.map((cycle) => [cycle.id, cycle.name])), [cycles])
+  const courseMap = useMemo(() => new Map(courses.map((course) => [course.id, course])), [courses])
+  const [draft, setDraft] = useState<TeacherDraft>(() => createEmptyTeacher(cycles, courses, levels))
   const [editingId, setEditingId] = useState<number | null>(null)
 
   useEffect(() => {
-    setDraft((current) => ({
-      ...current,
-      cycleId: cycles.some((cycle) => cycle.id === current.cycleId) ? current.cycleId : cycles[0]?.id ?? ''
-    }))
-  }, [cycles])
+    setDraft((current) => {
+      const course = current.courseId ? courseMap.get(current.courseId) : courses[0]
+      const cycleId = resolveCycleForCourse(course, levels, cycles)
+      return {
+        ...current,
+        courseId: course?.id ?? null,
+        cycleId
+      }
+    })
+  }, [courses, courseMap, cycles, levels])
+
+  const hasCourses = courses.length > 0
+  const courseOptions = courses.map((course) => ({ id: course.id, name: course.name }))
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!draft.name.trim() || draft.subjects.length === 0 || !draft.cycleId) {
+    if (!draft.name.trim() || draft.subjects.length === 0 || !draft.cycleId || !draft.courseId) {
       return
     }
 
@@ -66,6 +126,7 @@ export function TeachersPage() {
       contractType: draft.contractType,
       subjects: draft.subjects,
       cycleId: draft.cycleId,
+      courseId: draft.courseId,
       weeklyHours: draft.weeklyHours
     }
 
@@ -75,7 +136,7 @@ export function TeachersPage() {
       addTeacher(payload)
     }
 
-    setDraft(createEmptyTeacher(cycles))
+    setDraft(createEmptyTeacher(cycles, courses, levels))
     setEditingId(null)
   }
 
@@ -86,13 +147,14 @@ export function TeachersPage() {
       contractType: teacher.contractType,
       subjects: teacher.subjects,
       cycleId: teacher.cycleId,
+      courseId: teacher.courseId,
       weeklyHours: teacher.weeklyHours
     })
   }
 
   const handleCancel = () => {
     setEditingId(null)
-    setDraft(createEmptyTeacher(cycles))
+    setDraft(createEmptyTeacher(cycles, courses, levels))
   }
 
   const handleDelete = (id: number) => {
@@ -102,11 +164,26 @@ export function TeachersPage() {
     }
   }
 
+  const handleCourseChange = (courseId: number | null) => {
+    const course = courseId ? courseMap.get(courseId) : undefined
+    const cycleId = resolveCycleForCourse(course, levels, cycles)
+    setDraft((current) => ({
+      ...current,
+      courseId,
+      cycleId
+    }))
+  }
+
   return (
     <MaintenanceLayout
       title="Profesores"
       description="Gestiona la disponibilidad de profesores, asignaturas y ciclos para evitar conflictos."
     >
+      {!hasCourses && (
+        <div className="rounded border border-amber-400 bg-amber-50 p-4 text-sm text-amber-700 dark:border-amber-500 dark:bg-amber-500/10 dark:text-amber-200">
+          Debes crear al menos un curso antes de registrar profesores. Dirígete al mantenedor de cursos para continuar.
+        </div>
+      )}
       <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
         <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
           <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
@@ -115,6 +192,7 @@ export function TeachersPage() {
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Nombre</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Contrato</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Asignaturas</th>
+                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Curso asignado</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Ciclo</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Horas</th>
                 <th className="px-4 py-3" />
@@ -132,7 +210,10 @@ export function TeachersPage() {
                       ))}
                     </ul>
                   </td>
-                  <td className="px-4 py-3">{cycles.find((cycle) => cycle.id === teacher.cycleId)?.name ?? teacher.cycleId}</td>
+                  <td className="px-4 py-3">
+                    {teacher.courseId ? courseMap.get(teacher.courseId)?.name ?? 'Curso no disponible' : 'Sin curso'}
+                  </td>
+                  <td className="px-4 py-3">{cycleNameMap.get(teacher.cycleId) ?? teacher.cycleId}</td>
                   <td className="px-4 py-3">{teacher.weeklyHours}</td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-3">
@@ -140,6 +221,7 @@ export function TeachersPage() {
                         className="text-sm text-slate-500 transition hover:text-brand"
                         type="button"
                         onClick={() => handleEdit(teacher)}
+                        disabled={!hasCourses}
                       >
                         Editar
                       </button>
@@ -177,6 +259,7 @@ export function TeachersPage() {
               maxLength={50}
               className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
               required
+              disabled={!hasCourses}
             />
           </label>
           <label className="grid gap-2 text-sm">
@@ -185,6 +268,7 @@ export function TeachersPage() {
               value={draft.contractType}
               onChange={(event) => setDraft((current) => ({ ...current, contractType: event.target.value as ContractType }))}
               className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+              disabled={!hasCourses}
             >
               <option value="Completo">Completo</option>
               <option value="Parcial">Parcial</option>
@@ -209,6 +293,7 @@ export function TeachersPage() {
                     }))
                   }}
                   className="h-4 w-4"
+                  disabled={!hasCourses}
                 />
                 <span>{subject.name}</span>
               </label>
@@ -224,23 +309,35 @@ export function TeachersPage() {
           </fieldset>
           <fieldset className="grid gap-2 rounded border border-dashed border-slate-300 p-3 text-sm dark:border-slate-700">
             <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
-              Ciclo asignado
+              Curso y ciclo asignados
             </legend>
-            <select
-              value={draft.cycleId}
-              onChange={(event) => setDraft((current) => ({ ...current, cycleId: event.target.value }))}
-              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-              required
-            >
-              <option value="" disabled>
-                Selecciona un ciclo
-              </option>
-              {cycles.map((cycle) => (
-                <option key={cycle.id} value={cycle.id}>
-                  {cycle.name}
+            <label className="grid gap-2 text-sm">
+              <span className="font-medium text-slate-600 dark:text-slate-300">Curso</span>
+              <select
+                value={draft.courseId ?? ''}
+                onChange={(event) =>
+                  handleCourseChange(event.target.value === '' ? null : Number(event.target.value))
+                }
+                className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                required
+                disabled={!hasCourses}
+              >
+                <option value="" disabled>
+                  Selecciona un curso
                 </option>
-              ))}
-            </select>
+                {courseOptions.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Ciclo detectado:{' '}
+              <span className="font-semibold text-slate-700 dark:text-slate-200">
+                {cycleNameMap.get(draft.cycleId) ?? 'Sin ciclo'}
+              </span>
+            </p>
           </fieldset>
           <label className="grid gap-2 text-sm">
             <span className="font-medium text-slate-600 dark:text-slate-300">Horas semanales</span>
@@ -252,10 +349,15 @@ export function TeachersPage() {
                 setDraft((current) => ({ ...current, weeklyHours: Math.max(1, Number(event.target.value) || 1) }))
               }
               className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+              disabled={!hasCourses}
             />
           </label>
           <div className="flex items-center gap-3">
-            <button type="submit" className="rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white">
+            <button
+              type="submit"
+              className="rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white"
+              disabled={!hasCourses}
+            >
               {editingId ? 'Actualizar profesor' : 'Guardar profesor'}
             </button>
             {editingId && (
@@ -269,3 +371,4 @@ export function TeachersPage() {
     </MaintenanceLayout>
   )
 }
+

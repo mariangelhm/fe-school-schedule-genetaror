@@ -15,10 +15,20 @@ export function ClassroomsPage() {
 
   const [draft, setDraft] = useState<ClassroomDraft>({ name: '', levelId: levelOptions[0]?.id ?? FIXED_LEVELS[0].id })
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim() || !draft.levelId) {
+      return
+    }
+
+    const normalisedName = draft.name.trim().toLowerCase()
+    const exists = classrooms.some(
+      (classroom) => classroom.id !== editingId && classroom.name.trim().toLowerCase() === normalisedName
+    )
+    if (exists) {
+      setError('Ya existe un aula con ese nombre. Ingresa un nombre diferente.')
       return
     }
 
@@ -28,6 +38,7 @@ export function ClassroomsPage() {
       addClassroom(draft)
     }
 
+    setError(null)
     setDraft({ name: '', levelId: levelOptions[0]?.id ?? FIXED_LEVELS[0].id })
     setEditingId(null)
   }
@@ -35,10 +46,12 @@ export function ClassroomsPage() {
   const handleEdit = (classroom: ClassroomData) => {
     setDraft({ name: classroom.name, levelId: classroom.levelId })
     setEditingId(classroom.id)
+    setError(null)
   }
 
   const handleCancel = () => {
     setEditingId(null)
+    setError(null)
     setDraft({ name: '', levelId: levelOptions[0]?.id ?? FIXED_LEVELS[0].id })
   }
 
@@ -107,6 +120,7 @@ export function ClassroomsPage() {
           className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-800/60"
         >
           <h2 className="text-lg font-semibold">{editingId ? 'Editar aula' : 'Nueva aula'}</h2>
+          {error && <p className="text-sm text-rose-500">{error}</p>}
           <label className="grid gap-2 text-sm">
             <span className="font-medium text-slate-600 dark:text-slate-300">Nombre</span>
             <input
