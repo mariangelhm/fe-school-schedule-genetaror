@@ -1,14 +1,16 @@
-import type { ConfigResponse, CycleConfig } from '../services/configService'
-import type { CourseData, LevelData, SubjectData, TeacherData } from '../store/useSchedulerData'
+import type { ConfigResponse } from '../services/configService'
+import type { CourseData, SubjectData, TeacherData } from '../store/useSchedulerData'
 
 export const WORKING_DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'] as const
 export const LUNCH_LABEL = 'Hora de almuerzo'
+export const ADMIN_LABEL = 'Horas administrativas'
 
 export interface PreviewCell {
   subject: string
   teacher?: string
   course?: string
   color: string
+  type?: 'class' | 'admin'
 }
 
 export interface PreviewRow {
@@ -44,7 +46,6 @@ interface BuildPreviewInput {
   courses: CourseData[]
   subjects: SubjectData[]
   teachers: TeacherData[]
-  levels: LevelData[]
   mode: 'full' | 'course'
   courseId?: number
   config: ConfigResponse
@@ -56,9 +57,15 @@ interface SlotCell {
   color: string
 }
 
-interface CourseGrid {
+interface CourseAssignments {
   course: CourseData
-  grid: (SlotCell | null)[][]
+  daySessions: SlotCell[][]
+}
+
+interface DaySlot {
+  type: 'class' | 'lunch' | 'admin'
+  start: number
+  end: number
 }
 
 interface ScheduleStructureRow {
@@ -94,62 +101,88 @@ function normaliseName(value: string) {
     .toLowerCase()
 }
 
-function getLevelName(levelId: string, levels: LevelData[]): string {
-  return levels.find((level) => level.id === levelId)?.name ?? levelId
+function rangesOverlap(startA: number, endA: number, startB: number, endB: number) {
+  return startA < endB && endA > startB
 }
 
-function resolveCourseCycle(course: CourseData, levels: LevelData[], cycles: CycleConfig[] = []) {
-  const levelName = getLevelName(course.levelId, levels)
-  const target = normaliseName(levelName)
-  return cycles.find((cycle) =>
-    cycle.levels.some((level) => {
-      const normalisedLevel = normaliseName(level)
-      return (
-        normalisedLevel === target ||
-        normalisedLevel.includes(target) ||
-        target.includes(normalisedLevel)
-      )
-    })
-  )
-}
-
-function getWeeklyBlocksForCycle(subject: SubjectData, cycleId?: string) {
-  if (!cycleId) {
-    return subject.cycleLoads.reduce((acc, load) => acc + load.weeklyBlocks, 0)
-  }
-  const entry = subject.cycleLoads.find((load) => load.cycleId === cycleId)
-  return entry?.weeklyBlocks ?? 0
-}
-
-function calculateDailyCapacity(
+function buildTimeline(
   course: CourseData,
-  config: ConfigResponse,
-  cycles: CycleConfig[],
-  levels: LevelData[]
-): { maxDailyBlocks: number; totalCapacity: number; cycleId?: string } {
+  config: ConfigResponse
+): { perDaySlots: DaySlot[][]; classSlotLimits: number[]; structure: ScheduleStructureRow[] } {
   const blockDuration = config.blockDuration ?? 45
-  const dayStart = config.dayStart ?? '08:00'
-  const lunchStart = config.lunchStart
+  const dayStartMinutes = timeToMinutes(config.dayStart ?? '08:00')
+  const lunchStartMinutes = config.lunchStart ? timeToMinutes(config.lunchStart) : null
   const lunchDuration = Math.max(0, config.lunchDuration ?? 0)
+  const lunchEndMinutes = lunchStartMinutes !== null ? lunchStartMinutes + lunchDuration : null
 
-  const cycle = resolveCourseCycle(course, levels, cycles)
-  const dayStartMinutes = timeToMinutes(dayStart)
+  const schedule = config.levelSchedules?.find((entry) => entry.levelId === course.levelId)
   const fallbackEnd = dayStartMinutes + blockDuration * 8 + lunchDuration
-  const dayEndMinutes = Math.max(dayStartMinutes + blockDuration, cycle ? timeToMinutes(cycle.endTime) : fallbackEnd)
+  const dayEndMinutes = schedule?.endTime ? timeToMinutes(schedule.endTime) : fallbackEnd
 
-  let effectiveLunch = 0
-  if (lunchStart) {
-    const lunchStartMinutes = timeToMinutes(lunchStart)
-    if (lunchStartMinutes > dayStartMinutes && lunchStartMinutes < dayEndMinutes) {
-      effectiveLunch = lunchDuration
+  const perDaySlots: DaySlot[][] = WORKING_DAYS.map((day) => {
+    const administrative = schedule?.administrativeBlocks?.filter((block) => block.day === day) ?? []
+    const administrativeIntervals = administrative
+      .map((block) => ({ start: timeToMinutes(block.start), end: timeToMinutes(block.end) }))
+      .filter((interval) => interval.end > interval.start)
+
+    const slots: DaySlot[] = []
+    let pointer = dayStartMinutes
+
+    while (pointer + blockDuration <= dayEndMinutes + 1) {
+      const slotEnd = pointer + blockDuration
+      let type: DaySlot['type'] = 'class'
+
+      if (
+        lunchStartMinutes !== null &&
+        lunchDuration > 0 &&
+        rangesOverlap(pointer, slotEnd, lunchStartMinutes, lunchEndMinutes ?? lunchStartMinutes)
+      ) {
+        type = 'lunch'
+      } else if (
+        administrativeIntervals.some((interval) => rangesOverlap(pointer, slotEnd, interval.start, interval.end))
+      ) {
+        type = 'admin'
+      }
+
+      slots.push({ type, start: pointer, end: slotEnd })
+      pointer = slotEnd
     }
-  }
 
-  const availableMinutes = Math.max(0, dayEndMinutes - dayStartMinutes - effectiveLunch)
-  const maxDailyBlocks = Math.max(1, Math.floor(availableMinutes / blockDuration))
-  const totalCapacity = maxDailyBlocks * WORKING_DAYS.length
+    return slots
+  })
 
-  return { maxDailyBlocks, totalCapacity, cycleId: cycle?.id }
+  const maxSlots = Math.max(...perDaySlots.map((slots) => slots.length))
+  perDaySlots.forEach((slots) => {
+    if (slots.length < maxSlots) {
+      const last = slots[slots.length - 1]
+      while (slots.length < maxSlots) {
+        const start = last ? last.end : dayStartMinutes
+        slots.push({ type: 'class', start, end: start + blockDuration })
+      }
+    }
+  })
+
+  const classSlotLimits = perDaySlots.map((slots) => slots.filter((slot) => slot.type === 'class').length)
+
+  const structure: ScheduleStructureRow[] = []
+  let classRowCounter = 0
+  perDaySlots[0].forEach((slot) => {
+    if (slot.type === 'class') {
+      structure.push({
+        kind: 'class',
+        time: minutesToRange(slot.start, blockDuration),
+        classRowIndex: classRowCounter
+      })
+      classRowCounter += 1
+    } else {
+      structure.push({
+        kind: slot.type === 'lunch' ? 'lunch' : 'class',
+        time: minutesToRange(slot.start, blockDuration)
+      })
+    }
+  })
+
+  return { perDaySlots, classSlotLimits, structure }
 }
 
 interface SubjectRequirement {
@@ -160,7 +193,7 @@ interface SubjectRequirement {
 interface TeacherCapacity {
   teacher: TeacherData
   remainingBlocks: number
-  subjects: string[]
+  subjectIds: Set<number>
   courseIds: Set<number>
 }
 
@@ -172,7 +205,7 @@ function createTeacherCapacities(teachers: TeacherData[], blockDuration: number)
     map.set(teacher.id, {
       teacher,
       remainingBlocks: capacity,
-      subjects: teacher.subjects.map(normaliseName),
+      subjectIds: new Set(teacher.subjectIds),
       courseIds: new Set(teacher.courseIds)
     })
   })
@@ -184,9 +217,8 @@ function distributeSessions(
   requirements: SubjectRequirement[],
   teacherCapacities: Map<number, TeacherCapacity>,
   days: readonly string[],
-  maxDailyBlocks: number,
-  courseCycleId?: string
-): CourseGrid | { error: string } {
+  classSlotLimits: number[]
+): CourseAssignments | { error: string } {
   if (requirements.length === 0) {
     return { error: `El curso ${course.name} no tiene asignaturas configuradas para su ciclo.` }
   }
@@ -212,9 +244,8 @@ function distributeSessions(
     let guard = 0
 
     const pickTeacher = (): TeacherCapacity => {
-      const subjectName = normaliseName(subject.name)
       const candidates = Array.from(teacherCapacities.values()).filter((info) => {
-        if (!info.subjects.includes(subjectName)) {
+        if (!info.subjectIds.has(subject.id)) {
           return false
         }
         if (info.teacher.levelId !== course.levelId) {
@@ -247,7 +278,7 @@ function distributeSessions(
       const dayIndex = dayPointer % days.length
       const day = daySessions[dayIndex]
 
-      if (day.length >= maxDailyBlocks || counts[dayIndex] >= maxPerDay) {
+      if (day.length >= (classSlotLimits[dayIndex] ?? 0) || counts[dayIndex] >= maxPerDay) {
         dayPointer++
         guard++
         continue
@@ -284,12 +315,12 @@ function distributeSessions(
           return
         }
 
-        if (day.length >= maxDailyBlocks || counts[dayIndex] >= maxPerDay) {
+        if (day.length >= (classSlotLimits[dayIndex] ?? 0) || counts[dayIndex] >= maxPerDay) {
           return
         }
 
         while (
-          day.length < maxDailyBlocks &&
+          day.length < (classSlotLimits[dayIndex] ?? 0) &&
           counts[dayIndex] < maxPerDay &&
           allocated < weeklyBlocks
         ) {
@@ -325,17 +356,12 @@ function distributeSessions(
     }
   }
 
-  const maxBlocks = Math.max(...daySessions.map((sessions) => sessions.length), 0)
-
-  if (maxBlocks === 0) {
+  const hasSessions = daySessions.some((sessions) => sessions.length > 0)
+  if (!hasSessions) {
     return { error: `El curso ${course.name} no tiene bloques planificados.` }
   }
 
-  const grid: (SlotCell | null)[][] = Array.from({ length: maxBlocks }, (_, rowIndex) =>
-    days.map((_, dayIndex) => daySessions[dayIndex][rowIndex] ?? null)
-  )
-
-  return { course, grid }
+  return { course, daySessions }
 }
 
 function buildScheduleStructure(classRowCount: number, config: ConfigResponse): ScheduleStructureRow[] {
@@ -420,7 +446,13 @@ export function syncPreview(preview: SchedulePreview): SchedulePreview {
       }
 
       row.cells.forEach((cell, dayIndex) => {
-        if (!cell || !cell.teacher || cell.teacher === 'Sin profesor asignado') {
+        if (
+          !cell ||
+          cell.type === 'admin' ||
+          cell.subject === LUNCH_LABEL ||
+          !cell.teacher ||
+          cell.teacher === 'Sin profesor asignado'
+        ) {
           return
         }
 
@@ -467,7 +499,10 @@ export function syncPreview(preview: SchedulePreview): SchedulePreview {
         if (row.kind !== 'class') {
           return sum
         }
-        return sum + row.cells.filter(Boolean).length
+        return (
+          sum +
+          row.cells.filter((cell) => cell && cell.type !== 'admin' && cell.subject !== LUNCH_LABEL).length
+        )
       }, 0)
     )
   }, 0)
@@ -484,7 +519,7 @@ export function syncPreview(preview: SchedulePreview): SchedulePreview {
 }
 
 export function buildSchedulePreview(input: BuildPreviewInput): { preview?: SchedulePreview; error?: string } {
-  const { courses, subjects, teachers, levels, mode, courseId, config } = input
+  const { courses, subjects, teachers, mode, courseId, config } = input
 
   if (courses.length === 0) {
     return { error: 'No hay cursos disponibles para generar una previsualización.' }
@@ -514,36 +549,19 @@ export function buildSchedulePreview(input: BuildPreviewInput): { preview?: Sche
   const dayStart = config.dayStart ?? '08:00'
   const lunchStart = config.lunchStart ?? '13:00'
   const lunchDuration = Math.max(0, config.lunchDuration ?? 60)
-  const cycles = config.cycles ?? []
 
-  const courseGrids: CourseGrid[] = []
-  const levelMap = new Map(levels.map((level) => [level.id, level.name]))
+  const courseTables: PreviewTable[] = []
   const teacherCapacities = createTeacherCapacities(teachers, blockDuration)
 
   for (const course of workingCourses) {
-    const { maxDailyBlocks, totalCapacity, cycleId } = calculateDailyCapacity(course, config, cycles, levels)
-    const courseLevelId = course.levelId
-    const courseLevelName = (levelMap.get(courseLevelId) ?? courseLevelId).toLowerCase()
+    const timeline = buildTimeline(course, config)
+    const totalCapacity = timeline.classSlotLimits.reduce((acc, limit) => acc + limit, 0)
 
     const requirements: SubjectRequirement[] = subjects
-      .filter((subject) => {
-        if (subject.levelIds.length === 0) {
-          return false
-        }
-
-        if (subject.levelIds.includes(courseLevelId)) {
-          return true
-        }
-
-        const subjectLevelNames = subject.levelIds.map((levelId) =>
-          (levelMap.get(levelId) ?? levelId).toLowerCase()
-        )
-
-        return subjectLevelNames.includes(courseLevelName)
-      })
+      .filter((subject) => subject.levelId === course.levelId)
       .map((subject) => ({
         subject,
-        weeklyBlocks: getWeeklyBlocksForCycle(subject, cycleId)
+        weeklyBlocks: Math.max(0, Number(subject.weeklyBlocks) || 0)
       }))
       .filter((requirement) => requirement.weeklyBlocks > 0)
 
@@ -551,46 +569,65 @@ export function buildSchedulePreview(input: BuildPreviewInput): { preview?: Sche
 
     if (totalRequiredBlocks > totalCapacity) {
       return {
-        error: `El ciclo asignado a ${course.name} solo permite ${totalCapacity} bloques a la semana, pero se requieren ${totalRequiredBlocks}. Ajusta los horarios del ciclo o la carga de asignaturas.`
+        error: `La jornada configurada para ${course.name} solo permite ${totalCapacity} bloques semanales, pero se requieren ${totalRequiredBlocks}. Ajusta las horas administrativas o la carga de asignaturas.`
       }
     }
 
-    const grid = distributeSessions(course, requirements, teacherCapacities, WORKING_DAYS, maxDailyBlocks, cycleId)
-    if ('error' in grid) {
-      return { error: grid.error }
+    const assignments = distributeSessions(
+      course,
+      requirements,
+      teacherCapacities,
+      WORKING_DAYS,
+      timeline.classSlotLimits
+    )
+    if ('error' in assignments) {
+      return { error: assignments.error }
     }
-    courseGrids.push(grid)
-  }
 
-  const globalRowCount = Math.max(...courseGrids.map((grid) => grid.grid.length), 0)
-  const structure = buildScheduleStructure(globalRowCount, config)
-  const lunchCell: PreviewCell = { subject: LUNCH_LABEL, color: '#f97316' }
+    const lunchCell: PreviewCell = { subject: LUNCH_LABEL, color: '#f97316' }
+    const adminCell: PreviewCell = { subject: ADMIN_LABEL, color: '#94a3b8', type: 'admin' }
+    const dayClassPointers = WORKING_DAYS.map(() => 0)
 
-  const courseTables: PreviewTable[] = courseGrids.map(({ course, grid }) => ({
-    id: course.id,
-    name: course.name,
-    rows: structure.map((row) => {
+    const rows: PreviewRow[] = timeline.structure.map((row, rowIndex) => {
       if (row.kind === 'lunch') {
         return {
           time: row.time,
           kind: 'lunch',
-          cells: Array.from({ length: WORKING_DAYS.length }, () => lunchCell)
+          cells: WORKING_DAYS.map((_, dayIndex) => {
+            const slot = timeline.perDaySlots[dayIndex][rowIndex]
+            return slot.type === 'lunch' ? lunchCell : null
+          })
         }
       }
 
-      const rowIndex = row.classRowIndex ?? 0
       return {
         time: row.time,
         kind: 'class',
         cells: WORKING_DAYS.map((_, dayIndex) => {
-          const cell = grid[rowIndex]?.[dayIndex]
-          return cell
-            ? { subject: cell.subject, teacher: cell.teacher, color: cell.color }
+          const slot = timeline.perDaySlots[dayIndex][rowIndex]
+          if (slot.type === 'admin') {
+            return adminCell
+          }
+          if (slot.type === 'lunch') {
+            return lunchCell
+          }
+
+          const classIndex = dayClassPointers[dayIndex]
+          dayClassPointers[dayIndex] = classIndex + 1
+          const assignment = assignments.daySessions[dayIndex][classIndex]
+          return assignment
+            ? { subject: assignment.subject, teacher: assignment.teacher, color: assignment.color, type: 'class' }
             : null
         })
       }
     })
-  }))
+
+    courseTables.push({
+      id: course.id,
+      name: course.name,
+      rows
+    })
+  }
 
   const basePreview: SchedulePreview = {
     days: WORKING_DAYS,

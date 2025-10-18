@@ -87,10 +87,10 @@ export function CoursesPage() {
       classroomId: draft.classroomId
     }
 
-    if (editingId) {
-      updateCourse(editingId, payload)
-    } else {
-      addCourse(payload)
+    const success = editingId ? updateCourse(editingId, payload) : addCourse(payload)
+    if (!success) {
+      setError('El aula seleccionada ya está asignada a otro curso.')
+      return
     }
 
     setDraft(buildCourseDraft(defaultLevelId, classrooms))

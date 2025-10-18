@@ -12,6 +12,7 @@ export function Dashboard() {
   const levels = useSchedulerDataStore((state) => state.levels)
   const levelMap = new Map(levels.map((level) => [level.id, level.name]))
   const courseMap = new Map(courses.map((course) => [course.id, course.name]))
+  const subjectMap = new Map(subjects.map((subject) => [subject.id, subject.name]))
 
   return (
     <section className="grid gap-8">
@@ -66,10 +67,14 @@ export function Dashboard() {
               .map((courseId) => courseMap.get(courseId))
               .filter((name): name is string => Boolean(name))
             const levelName = levelMap.get(teacher.levelId) ?? teacher.levelId
+            const subjectNames = teacher.subjectIds
+              .map((subjectId) => subjectMap.get(subjectId))
+              .filter((name): name is string => Boolean(name))
+            const contractLabel = teacher.contractType === 'full-time' ? 'Tiempo completo' : 'Tiempo parcial'
             return {
               id: teacher.id,
               primary: teacher.name,
-              secondary: `${teacher.subjects.length} asignaturas · Nivel: ${levelName} · Cursos: ${
+              secondary: `${subjectNames.length} asignaturas · ${contractLabel} · Nivel: ${levelName} · Cursos: ${
                 courseNames.length > 0 ? courseNames.join(', ') : 'Sin cursos'
               }`
             }
@@ -82,9 +87,9 @@ export function Dashboard() {
           items={subjects.map((subject) => ({
             id: subject.id,
             primary: subject.name,
-            secondary: `${subject.levelIds
-              .map((levelId) => levelMap.get(levelId) ?? levelId)
-              .join(', ') || 'Sin niveles'} · Color ${subject.color}`
+            secondary: `Nivel: ${levelMap.get(subject.levelId) ?? subject.levelId} · Bloques/semana: ${
+              subject.weeklyBlocks
+            }`
           }))}
           footerLink={{ to: '/maintenance/subjects', label: 'Gestionar asignaturas' }}
         />

@@ -3,11 +3,6 @@ import { persist } from 'zustand/middleware'
 
 type SubjectType = 'Normal' | 'Especial'
 
-export interface SubjectCycleLoad {
-  cycleId: string
-  weeklyBlocks: number
-}
-
 export interface LevelData {
   id: string
   name: string
@@ -16,8 +11,8 @@ export interface LevelData {
 export interface SubjectData {
   id: number
   name: string
-  levelIds: string[]
-  cycleLoads: SubjectCycleLoad[]
+  levelId: string
+  weeklyBlocks: number
   maxDailyBlocks: number
   type: SubjectType
   color: string
@@ -40,11 +35,14 @@ export interface CourseData {
 export interface TeacherData {
   id: number
   name: string
-  subjects: string[]
+  subjectIds: number[]
   levelId: string
   courseIds: number[]
   weeklyHours: number
+  contractType: TeacherContractType
 }
+
+export type TeacherContractType = 'full-time' | 'part-time'
 
 interface SchedulerState {
   levels: LevelData[]
@@ -52,18 +50,18 @@ interface SchedulerState {
   subjects: SubjectData[]
   courses: CourseData[]
   teachers: TeacherData[]
-  addClassroom: (classroom: Omit<ClassroomData, 'id'>) => void
+  addClassroom: (classroom: Omit<ClassroomData, 'id'>) => boolean
   removeClassroom: (id: number) => void
-  updateClassroom: (id: number, classroom: Omit<ClassroomData, 'id'>) => void
-  addSubject: (subject: Omit<SubjectData, 'id'>) => void
+  updateClassroom: (id: number, classroom: Omit<ClassroomData, 'id'>) => boolean
+  addSubject: (subject: Omit<SubjectData, 'id'>) => boolean
   removeSubject: (id: number) => void
-  updateSubject: (id: number, subject: Omit<SubjectData, 'id'>) => void
-  addCourse: (course: Omit<CourseData, 'id'>) => void
+  updateSubject: (id: number, subject: Omit<SubjectData, 'id'>) => boolean
+  addCourse: (course: Omit<CourseData, 'id'>) => boolean
   removeCourse: (id: number) => void
-  updateCourse: (id: number, course: Omit<CourseData, 'id'>) => void
-  addTeacher: (teacher: Omit<TeacherData, 'id'>) => void
+  updateCourse: (id: number, course: Omit<CourseData, 'id'>) => boolean
+  addTeacher: (teacher: Omit<TeacherData, 'id'>) => boolean
   removeTeacher: (id: number) => void
-  updateTeacher: (id: number, teacher: Omit<TeacherData, 'id'>) => void
+  updateTeacher: (id: number, teacher: Omit<TeacherData, 'id'>) => boolean
 }
 
 export const FIXED_LEVELS: LevelData[] = [
@@ -85,11 +83,8 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
     {
       id: 1,
       name: 'Lenguaje',
-      levelIds: ['basico'],
-      cycleLoads: [
-        { cycleId: 'ciclo-basico-i', weeklyBlocks: 6 },
-        { cycleId: 'ciclo-basico-ii', weeklyBlocks: 4 }
-      ],
+      levelId: 'basico',
+      weeklyBlocks: 10,
       maxDailyBlocks: 2,
       type: 'Normal',
       color: '#2563eb'
@@ -97,11 +92,8 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
     {
       id: 2,
       name: 'Matemática',
-      levelIds: ['basico'],
-      cycleLoads: [
-        { cycleId: 'ciclo-basico-i', weeklyBlocks: 5 },
-        { cycleId: 'ciclo-basico-ii', weeklyBlocks: 4 }
-      ],
+      levelId: 'basico',
+      weeklyBlocks: 9,
       maxDailyBlocks: 2,
       type: 'Normal',
       color: '#9333ea'
@@ -109,11 +101,8 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
     {
       id: 3,
       name: 'Música',
-      levelIds: ['parvulario', 'basico'],
-      cycleLoads: [
-        { cycleId: 'ciclo-basico-i', weeklyBlocks: 2 },
-        { cycleId: 'ciclo-basico-ii', weeklyBlocks: 2 }
-      ],
+      levelId: 'media',
+      weeklyBlocks: 4,
       maxDailyBlocks: 1,
       type: 'Especial',
       color: '#eab308'
@@ -139,146 +128,212 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
     {
       id: 1,
       name: 'Ana Torres',
-      subjects: ['Lenguaje', 'Historia'],
+      subjectIds: [1],
       levelId: 'basico',
       courseIds: [1],
-      weeklyHours: 38
+      weeklyHours: 38,
+      contractType: 'full-time'
     },
     {
       id: 2,
       name: 'Luis Gómez',
-      subjects: ['Música'],
+      subjectIds: [3],
       levelId: 'media',
       courseIds: [2],
-      weeklyHours: 18
+      weeklyHours: 18,
+      contractType: 'part-time'
     }
   ]
 }
 
-function ensureSubjectLevels(levelIds: string[]): string[] {
-  const unique = Array.from(
-    new Set(levelIds.filter((levelId) => FIXED_LEVELS.some((level) => level.id === levelId)))
-  )
-  return unique.length > 0 ? unique : [DEFAULT_LEVEL_ID]
-}
-
 export const useSchedulerDataStore = create<SchedulerState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...defaultState,
-      addClassroom: (classroom) =>
+      addClassroom: (classroom) => {
+        let success = false
+        const levelId = FIXED_LEVELS.some((level) => level.id === classroom.levelId)
+          ? classroom.levelId
+          : DEFAULT_LEVEL_ID
         set((state) => {
           const normalisedName = classroom.name.trim().toLowerCase()
           const exists = state.classrooms.some(
-            (item) => item.name.trim().toLowerCase() === normalisedName
+            (item) =>
+              item.levelId === levelId && item.name.trim().toLowerCase() === normalisedName
           )
           if (exists) {
             return state
           }
+          success = true
           return {
-            classrooms: [{ id: Date.now(), ...classroom }, ...state.classrooms]
+            classrooms: [
+              { id: Date.now(), name: classroom.name.slice(0, 50), levelId },
+              ...state.classrooms
+            ]
           }
-        }),
-      updateClassroom: (id, classroom) =>
+        })
+        return success
+      },
+      updateClassroom: (id, classroom) => {
+        let success = false
+        const levelId = FIXED_LEVELS.some((level) => level.id === classroom.levelId)
+          ? classroom.levelId
+          : DEFAULT_LEVEL_ID
         set((state) => {
           const normalisedName = classroom.name.trim().toLowerCase()
           const exists = state.classrooms.some(
-            (item) => item.id !== id && item.name.trim().toLowerCase() === normalisedName
+            (item) =>
+              item.id !== id &&
+              item.levelId === levelId &&
+              item.name.trim().toLowerCase() === normalisedName
           )
           if (exists) {
             return state
           }
+          success = true
           return {
-            classrooms: state.classrooms.map((item) => (item.id === id ? { id, ...classroom } : item))
+            classrooms: state.classrooms.map((item) =>
+              item.id === id ? { id, name: classroom.name.slice(0, 50), levelId } : item
+            )
           }
-        }),
-      removeClassroom: (id) =>
+        })
+        return success
+      },
+      removeClassroom: (id) => {
         set((state) => ({
-          classrooms: state.classrooms.filter((classroom) => classroom.id !== id)
-        })),
-      addSubject: (subject) =>
+          classrooms: state.classrooms.filter((classroom) => classroom.id !== id),
+          courses: state.courses.map((course) =>
+            course.classroomId === id ? { ...course, classroomId: null } : course
+          )
+        }))
+      },
+      addSubject: (subject) => {
+        let success = false
+        const levelId = FIXED_LEVELS.some((level) => level.id === subject.levelId)
+          ? subject.levelId
+          : DEFAULT_LEVEL_ID
         set((state) => {
-          const levelIds = ensureSubjectLevels(subject.levelIds)
           const normalisedName = subject.name.trim().toLowerCase()
-          const hasConflict = state.subjects.some((existing) => {
-            if (existing.name.trim().toLowerCase() !== normalisedName) {
-              return false
-            }
-            return existing.levelIds.some((levelId) => levelIds.includes(levelId))
-          })
+          const hasConflict = state.subjects.some(
+            (existing) =>
+              existing.levelId === levelId && existing.name.trim().toLowerCase() === normalisedName
+          )
           if (hasConflict) {
             return state
           }
+          success = true
           return {
             subjects: [
               {
                 id: Date.now(),
-                ...subject,
-                levelIds
+                name: subject.name.slice(0, 50),
+                levelId,
+                weeklyBlocks: Math.max(1, Number(subject.weeklyBlocks) || 1),
+                maxDailyBlocks: Math.max(1, Number(subject.maxDailyBlocks) || 1),
+                type: subject.type,
+                color: subject.color
               },
               ...state.subjects
             ]
           }
-        }),
-      updateSubject: (id, subject) =>
+        })
+        return success
+      },
+      updateSubject: (id, subject) => {
+        let success = false
+        const levelId = FIXED_LEVELS.some((level) => level.id === subject.levelId)
+          ? subject.levelId
+          : DEFAULT_LEVEL_ID
         set((state) => {
-          const levelIds = ensureSubjectLevels(subject.levelIds)
           const normalisedName = subject.name.trim().toLowerCase()
-          const hasConflict = state.subjects.some((existing) => {
-            if (existing.id === id) {
-              return false
-            }
-            if (existing.name.trim().toLowerCase() !== normalisedName) {
-              return false
-            }
-            return existing.levelIds.some((levelId) => levelIds.includes(levelId))
-          })
+          const hasConflict = state.subjects.some(
+            (existing) =>
+              existing.id !== id &&
+              existing.levelId === levelId &&
+              existing.name.trim().toLowerCase() === normalisedName
+          )
           if (hasConflict) {
             return state
           }
+          success = true
+          const updatedSubjects = state.subjects.map((item) =>
+            item.id === id
+              ? {
+                  id,
+                  name: subject.name.slice(0, 50),
+                  levelId,
+                  weeklyBlocks: Math.max(1, Number(subject.weeklyBlocks) || 1),
+                  maxDailyBlocks: Math.max(1, Number(subject.maxDailyBlocks) || 1),
+                  type: subject.type,
+                  color: subject.color
+                }
+              : item
+          )
+          const remainingSubjectIds = new Set(updatedSubjects.map((item) => item.id))
+          const updatedTeachers = state.teachers
+            .map((teacher) => {
+              const subjectIds = teacher.subjectIds.filter((subjectId) => remainingSubjectIds.has(subjectId))
+              if (subjectIds.length === 0) {
+                return null
+              }
+              return { ...teacher, subjectIds }
+            })
+            .filter((teacher: TeacherData | null): teacher is TeacherData => Boolean(teacher))
           return {
-            subjects: state.subjects.map((item) =>
-              item.id === id
-                ? {
-                    id,
-                    ...subject,
-                    levelIds
-                  }
-                : item
-            )
+            subjects: updatedSubjects,
+            teachers: updatedTeachers
           }
-        }),
-      removeSubject: (id) =>
-        set((state) => ({
-          subjects: state.subjects.filter((subject) => subject.id !== id)
-        })),
-      addCourse: (course) =>
+        })
+        return success
+      },
+      removeSubject: (id) => {
         set((state) => {
-          const validLevelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
-            ? course.levelId
-            : DEFAULT_LEVEL_ID
+          const subjects = state.subjects.filter((subject) => subject.id !== id)
+          const subjectIds = new Set(subjects.map((subject) => subject.id))
+          const teachers = state.teachers
+            .map((teacher) => {
+              const nextSubjectIds = teacher.subjectIds.filter((subjectId) => subjectIds.has(subjectId))
+              if (nextSubjectIds.length === 0) {
+                return null
+              }
+              return { ...teacher, subjectIds: nextSubjectIds }
+            })
+            .filter((teacher: TeacherData | null): teacher is TeacherData => Boolean(teacher))
+          return { subjects, teachers }
+        })
+      },
+      addCourse: (course) => {
+        let success = false
+        const levelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
+          ? course.levelId
+          : DEFAULT_LEVEL_ID
+        set((state) => {
           if (
             course.classroomId !== null &&
             state.courses.some((existing) => existing.classroomId === course.classroomId)
           ) {
             return state
           }
-          const newCourse = {
+          success = true
+          const newCourse: CourseData = {
             id: Date.now(),
-            ...course,
-            levelId: validLevelId,
+            name: course.name.slice(0, 50),
+            levelId,
             headTeacherId: course.headTeacherId ?? null,
             classroomId: course.classroomId ?? null
           }
           return {
             courses: [newCourse, ...state.courses]
           }
-        }),
-      updateCourse: (id, course) =>
+        })
+        return success
+      },
+      updateCourse: (id, course) => {
+        let success = false
+        const levelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
+          ? course.levelId
+          : DEFAULT_LEVEL_ID
         set((state) => {
-          const validLevelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
-            ? course.levelId
-            : DEFAULT_LEVEL_ID
           if (
             course.classroomId !== null &&
             state.courses.some(
@@ -287,12 +342,13 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           ) {
             return state
           }
+          success = true
           const updatedCourses = state.courses.map((item) =>
             item.id === id
               ? {
                   id,
-                  ...course,
-                  levelId: validLevelId,
+                  name: course.name.slice(0, 50),
+                  levelId,
                   headTeacherId: course.headTeacherId ?? null,
                   classroomId: course.classroomId ?? null
                 }
@@ -306,23 +362,24 @@ export const useSchedulerDataStore = create<SchedulerState>()(
               }
               const filteredCourseIds = teacher.courseIds.filter((courseId) => {
                 const match = coursesById.get(courseId)
-                return match?.levelId === validLevelId
+                return match?.levelId === levelId
               })
               const nextCourseIds = filteredCourseIds.length > 0 ? filteredCourseIds : [id]
               return {
                 ...teacher,
-                levelId: validLevelId,
+                levelId,
                 courseIds: Array.from(new Set(nextCourseIds))
               }
             })
             .filter((teacher) => teacher.courseIds.length > 0)
-
           return {
             courses: updatedCourses,
             teachers: updatedTeachers
           }
-        }),
-      removeCourse: (id) =>
+        })
+        return success
+      },
+      removeCourse: (id) => {
         set((state) => {
           const remainingCourses = state.courses.filter((course) => course.id !== id)
           const coursesById = new Map(remainingCourses.map((course) => [course.id, course]))
@@ -332,27 +389,34 @@ export const useSchedulerDataStore = create<SchedulerState>()(
               if (courseIds.length === 0) {
                 return null
               }
-              const primaryCourse = coursesById.get(courseIds[0])
+              const referenceCourse = coursesById.get(courseIds[0])
               return {
                 ...teacher,
                 courseIds,
-                levelId: primaryCourse?.levelId ?? teacher.levelId
+                levelId: referenceCourse?.levelId ?? teacher.levelId
               }
             })
-            .filter((teacher): teacher is TeacherData => Boolean(teacher))
-
+            .filter((teacher: TeacherData | null): teacher is TeacherData => Boolean(teacher))
           return {
             courses: remainingCourses,
             teachers
           }
-        }),
-      addTeacher: (teacher) =>
+        })
+      },
+      addTeacher: (teacher) => {
+        let success = false
+        const levelId = FIXED_LEVELS.some((level) => level.id === teacher.levelId)
+          ? teacher.levelId
+          : DEFAULT_LEVEL_ID
         set((state) => {
-          const levelId = FIXED_LEVELS.some((level) => level.id === teacher.levelId)
-            ? teacher.levelId
-            : DEFAULT_LEVEL_ID
-          const subjects = Array.from(
-            new Set(teacher.subjects.map((subject) => subject.trim()).filter(Boolean))
+          const subjectMap = new Map(state.subjects.map((subject) => [subject.id, subject]))
+          const subjectIds = Array.from(
+            new Set(
+              (teacher.subjectIds ?? []).filter((subjectId) => {
+                const match = subjectMap.get(subjectId)
+                return match ? match.levelId === levelId : false
+              })
+            )
           )
           const courseIds = Array.from(
             new Set(
@@ -362,37 +426,43 @@ export const useSchedulerDataStore = create<SchedulerState>()(
               })
             )
           )
-          const subjectTypeMap = new Map(
-            state.subjects.map((subject) => [subject.name.trim().toLowerCase(), subject.type])
-          )
-          const teachesSpecial = subjects.some(
-            (subject) => subjectTypeMap.get(subject.toLowerCase()) === 'Especial'
-          )
+          const teachesSpecial = subjectIds.some((subjectId) => subjectMap.get(subjectId)?.type === 'Especial')
           const resolvedCourseIds = teachesSpecial ? courseIds : courseIds.slice(0, 1)
-          if (!teacher.name.trim() || subjects.length === 0 || resolvedCourseIds.length === 0) {
+          if (!teacher.name.trim() || subjectIds.length === 0 || resolvedCourseIds.length === 0) {
             return state
           }
+          success = true
           return {
             teachers: [
               {
                 id: Date.now(),
                 name: teacher.name.slice(0, 50),
-                subjects,
+                subjectIds,
                 levelId,
                 courseIds: resolvedCourseIds,
-                weeklyHours: Math.max(1, Number(teacher.weeklyHours) || 1)
+                weeklyHours: Math.max(1, Number(teacher.weeklyHours) || 1),
+                contractType: teacher.contractType
               },
               ...state.teachers
             ]
           }
-        }),
-      updateTeacher: (id, teacher) =>
+        })
+        return success
+      },
+      updateTeacher: (id, teacher) => {
+        let success = false
+        const levelId = FIXED_LEVELS.some((level) => level.id === teacher.levelId)
+          ? teacher.levelId
+          : DEFAULT_LEVEL_ID
         set((state) => {
-          const levelId = FIXED_LEVELS.some((level) => level.id === teacher.levelId)
-            ? teacher.levelId
-            : DEFAULT_LEVEL_ID
-          const subjects = Array.from(
-            new Set(teacher.subjects.map((subject) => subject.trim()).filter(Boolean))
+          const subjectMap = new Map(state.subjects.map((subject) => [subject.id, subject]))
+          const subjectIds = Array.from(
+            new Set(
+              (teacher.subjectIds ?? []).filter((subjectId) => {
+                const match = subjectMap.get(subjectId)
+                return match ? match.levelId === levelId : false
+              })
+            )
           )
           const courseIds = Array.from(
             new Set(
@@ -402,226 +472,254 @@ export const useSchedulerDataStore = create<SchedulerState>()(
               })
             )
           )
-          const subjectTypeMap = new Map(
-            state.subjects.map((subject) => [subject.name.trim().toLowerCase(), subject.type])
-          )
-          const teachesSpecial = subjects.some(
-            (subject) => subjectTypeMap.get(subject.toLowerCase()) === 'Especial'
-          )
+          const teachesSpecial = subjectIds.some((subjectId) => subjectMap.get(subjectId)?.type === 'Especial')
           const resolvedCourseIds = teachesSpecial ? courseIds : courseIds.slice(0, 1)
-          if (!teacher.name.trim() || subjects.length === 0 || resolvedCourseIds.length === 0) {
+          if (!teacher.name.trim() || subjectIds.length === 0 || resolvedCourseIds.length === 0) {
             return state
           }
+          success = true
           return {
             teachers: state.teachers.map((item) =>
               item.id === id
                 ? {
                     id,
                     name: teacher.name.slice(0, 50),
-                    subjects,
+                    subjectIds,
                     levelId,
                     courseIds: resolvedCourseIds,
-                    weeklyHours: Math.max(1, Number(teacher.weeklyHours) || 1)
+                    weeklyHours: Math.max(1, Number(teacher.weeklyHours) || 1),
+                    contractType: teacher.contractType
                   }
                 : item
             )
           }
-        }),
-      removeTeacher: (id) =>
+        })
+        return success
+      },
+      removeTeacher: (id) => {
         set((state) => ({
           teachers: state.teachers.filter((teacher) => teacher.id !== id)
         }))
+      }
     }),
     {
       name: 'scheduler-data-store',
-      version: 7,
+      version: 8,
       migrate: (persistedState: any) => {
         if (!persistedState) {
           return persistedState as SchedulerState
         }
 
-        const normaliseList = (input: unknown): string[] => {
-          if (Array.isArray(input)) {
-            return input.map((item) => `${item}`.trim()).filter(Boolean)
-          }
-          if (typeof input === 'string') {
-            return input
-              .split(',')
-              .map((value) => value.trim())
-              .filter(Boolean)
-          }
-          return []
-        }
-
-        const ensureLevel = (name: string): string => {
-          const slug = name
-            .normalize('NFD')
-            .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
-            .replace(/(^-|-$)/g, '')
-            .toLowerCase()
-
-          const match = FIXED_LEVELS.find((level) => level.id === slug || level.name.toLowerCase() === name.toLowerCase())
-          return match?.id ?? DEFAULT_LEVEL_ID
-        }
-
-        const ensureCycleLoads = (subject: any): SubjectCycleLoad[] => {
-          if (Array.isArray(subject?.cycleLoads)) {
-            return subject.cycleLoads
-              .map((load: any) => ({
-                cycleId: `${load.cycleId ?? ''}`,
-                weeklyBlocks: Math.max(0, Number(load.weeklyBlocks) || 0)
-              }))
-              .filter((load: SubjectCycleLoad) => load.cycleId)
-          }
-
-          const fallback = Math.max(0, Number(subject?.weeklyBlocks) || 0)
-          if (fallback === 0) {
-            return defaultState.subjects[0].cycleLoads
-          }
-          return [
-            { cycleId: 'ciclo-basico-i', weeklyBlocks: fallback },
-            { cycleId: 'ciclo-basico-ii', weeklyBlocks: fallback }
-          ]
-        }
-
-        const legacySubjects = Array.isArray(persistedState.subjects) ? persistedState.subjects : []
-        const subjects: SubjectData[] = legacySubjects
-          .map((subject: any, index: number) => {
-            const levelNames = normaliseList(subject?.level)
-            const levelIds = levelNames.length > 0 ? levelNames.map(ensureLevel) : [DEFAULT_LEVEL_ID]
-
-            return {
-              id: subject?.id ?? Date.now() + index,
-              name: `${subject?.name ?? 'Asignatura'}`,
-              levelIds: ensureSubjectLevels(levelIds),
-              cycleLoads: ensureCycleLoads(subject),
-              maxDailyBlocks: Math.max(1, Number(subject?.maxDailyBlocks) || 1),
-              type: subject?.type === 'Especial' ? 'Especial' : 'Normal',
-              color: `${subject?.color ?? '#2563eb'}`
+        try {
+          const normaliseList = (input: unknown): string[] => {
+            if (Array.isArray(input)) {
+              return input.map((item) => `${item}`.trim()).filter(Boolean)
             }
-          })
-          .filter((subject: SubjectData) => subject.name.trim().length > 0)
+            if (typeof input === 'string') {
+              return input
+                .split(',')
+                .map((value) => value.trim())
+                .filter(Boolean)
+            }
+            return []
+          }
 
-        const legacyClassrooms = Array.isArray(persistedState.classrooms) ? persistedState.classrooms : []
-        const classrooms: ClassroomData[] = legacyClassrooms
-          .map((classroom: any, index: number) => {
+          const ensureLevel = (name: string): string => {
+            const normalised = `${name ?? ''}`
+              .toLowerCase()
+              .normalize('NFD')
+              .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
+              .replace(/(^-|-$)/g, '')
+
+            const match = FIXED_LEVELS.find(
+              (level) => level.id === normalised || level.name.toLowerCase() === `${name ?? ''}`.toLowerCase()
+            )
+            return match?.id ?? DEFAULT_LEVEL_ID
+          }
+
+          const legacyClassrooms = Array.isArray(persistedState.classrooms) ? persistedState.classrooms : []
+          const classroomsMap = new Map<string, ClassroomData>()
+          legacyClassrooms.forEach((classroom: any, index: number) => {
             const levelId = FIXED_LEVELS.some((level) => level.id === classroom?.levelId)
               ? classroom.levelId
               : DEFAULT_LEVEL_ID
-
-            return {
-              id: classroom?.id ?? Date.now() + index,
-              name: `${classroom?.name ?? 'Aula'}`.slice(0, 50),
-              levelId
+            const name = `${classroom?.name ?? 'Aula'}`.slice(0, 50)
+            if (!name.trim()) {
+              return
             }
+            const key = `${levelId}|${name.toLowerCase()}`
+            if (classroomsMap.has(key)) {
+              return
+            }
+            classroomsMap.set(key, {
+              id: classroom?.id ?? Date.now() + index,
+              name,
+              levelId
+            })
           })
-          .filter((classroom: ClassroomData) => classroom.name.trim().length > 0)
+          const classrooms = classroomsMap.size > 0 ? Array.from(classroomsMap.values()) : defaultState.classrooms
 
-        const legacyCourses = Array.isArray(persistedState.courses) ? persistedState.courses : []
-        const courses: CourseData[] = legacyCourses
-          .map((course: any, index: number) => {
+          const legacySubjects = Array.isArray(persistedState.subjects) ? persistedState.subjects : []
+          const subjects: SubjectData[] = []
+          const subjectLookup = new Map<string, number>()
+
+          legacySubjects.forEach((subject: any, index: number) => {
+            const name = `${subject?.name ?? 'Asignatura'}`.slice(0, 50)
+            if (!name.trim()) {
+              return
+            }
+
+            const levelNames = normaliseList(subject?.level ?? subject?.levels)
+            const levelIds = levelNames.length > 0 ? levelNames.map(ensureLevel) : [DEFAULT_LEVEL_ID]
+
+            const cycleLoads = Array.isArray(subject?.cycleLoads)
+              ? subject.cycleLoads
+                  .map((load: any) => Math.max(0, Number(load?.weeklyBlocks) || 0))
+                  .reduce((acc: number, value: number) => acc + value, 0)
+              : Math.max(0, Number(subject?.weeklyBlocks) || 0)
+
+            const weeklyBlocks = Math.max(1, cycleLoads || 4)
+            const maxDailyBlocks = Math.max(1, Number(subject?.maxDailyBlocks) || 1)
+            const type: SubjectType = subject?.type === 'Especial' ? 'Especial' : 'Normal'
+            const color = `${subject?.color ?? '#2563eb'}`
+
+            levelIds.forEach((levelId, offset) => {
+              const id = (typeof subject?.id === 'number' ? subject.id : Date.now() + index) + offset
+              const entry: SubjectData = {
+                id,
+                name,
+                levelId,
+                weeklyBlocks,
+                maxDailyBlocks,
+                type,
+                color
+              }
+              const key = `${name.toLowerCase()}|${levelId}`
+              if (!subjectLookup.has(key)) {
+                subjectLookup.set(key, id)
+                subjects.push(entry)
+              }
+            })
+          })
+
+          if (subjects.length === 0) {
+            defaultState.subjects.forEach((subject) => {
+              subjectLookup.set(`${subject.name.toLowerCase()}|${subject.levelId}`, subject.id)
+            })
+            subjects.push(...defaultState.subjects)
+          }
+
+          const legacyCourses = Array.isArray(persistedState.courses) ? persistedState.courses : []
+          const courses: CourseData[] = legacyCourses.map((course: any, index: number) => {
             const levelNames = normaliseList(course?.level)
             const levelId = levelNames.length > 0 ? ensureLevel(levelNames[0]) : DEFAULT_LEVEL_ID
-            const headTeacherName = `${course?.headTeacher ?? ''}`.toLowerCase()
-
+            const classroomId = typeof course?.classroomId === 'number' ? course.classroomId : null
             return {
               id: course?.id ?? Date.now() + index,
               name: `${course?.name ?? 'Curso'}`.slice(0, 50),
               levelId,
-              headTeacherId: null,
-              classroomId:
-                typeof course?.classroomId === 'number'
-                  ? course.classroomId
-                  : classrooms[0]?.id ?? defaultState.classrooms[0]?.id ?? null,
-              _headTeacherLookup: headTeacherName
-            } as CourseData & { _headTeacherLookup: string }
-          })
-          .map((course: CourseData & { _headTeacherLookup: string }) => {
-            const { _headTeacherLookup, ...rest } = course
-            return rest
+              headTeacherId: typeof course?.headTeacherId === 'number' ? course.headTeacherId : null,
+              classroomId
+            }
           })
 
-        const coursesById = new Map(courses.map((course) => [course.id, course]))
-        const coursesByName = new Map(
-          courses.map((course) => [course.name.toLowerCase(), course.id])
-        )
+          const courseById = new Map(courses.map((course) => [course.id, course]))
+          const courseByName = new Map(courses.map((course) => [course.name.toLowerCase(), course.id]))
 
-        const subjectTypeMap = new Map(
-          (subjects.length > 0 ? subjects : defaultState.subjects).map((subject) => [
-            subject.name.trim().toLowerCase(),
-            subject.type
-          ])
-        )
+          const legacyTeachers = Array.isArray(persistedState.teachers) ? persistedState.teachers : []
+          const teachers: TeacherData[] = legacyTeachers
+            .map((teacher: any, index: number) => {
+              const name = `${teacher?.name ?? 'Profesor'}`.slice(0, 50)
+              const levelId = ensureLevel(`${teacher?.levelId ?? teacher?.level ?? ''}`)
 
-        const legacyTeachers = Array.isArray(persistedState.teachers) ? persistedState.teachers : []
-        const teachers: TeacherData[] = legacyTeachers
-          .map((teacher: any, index: number) => {
-            const name = `${teacher?.name ?? 'Profesor'}`.slice(0, 50)
-            const subjectNames = normaliseList(teacher?.subjects)
-            if (subjectNames.length === 0) {
-              return null
-            }
+              const subjectNames = normaliseList(teacher?.subjects ?? teacher?.subject)
+              const subjectIds = subjectNames
+                .map((subjectName) => {
+                  const key = `${subjectName.toLowerCase()}|${levelId}`
+                  if (subjectLookup.has(key)) {
+                    return subjectLookup.get(key) as number
+                  }
+                  const anyLevelMatch = subjects.find(
+                    (subject) => subject.name.toLowerCase() === subjectName.toLowerCase()
+                  )
+                  return anyLevelMatch?.id
+                })
+                .filter((id): id is number => typeof id === 'number')
 
-            const levelId = ensureLevel(`${teacher?.levelId ?? teacher?.level ?? ''}`)
+              if (!name.trim() || subjectIds.length === 0) {
+                return null
+              }
 
-            const requestedCourseIds: number[] = []
-            if (typeof teacher?.courseId === 'number') {
-              requestedCourseIds.push(teacher.courseId)
-            }
-            if (Array.isArray(teacher?.courseIds)) {
-              teacher.courseIds.forEach((value: any) => {
-                if (typeof value === 'number') {
-                  requestedCourseIds.push(value)
+              const requestedCourseIds: number[] = []
+              if (typeof teacher?.courseId === 'number') {
+                requestedCourseIds.push(teacher.courseId)
+              }
+              if (Array.isArray(teacher?.courseIds)) {
+                teacher.courseIds.forEach((value: any) => {
+                  if (typeof value === 'number') {
+                    requestedCourseIds.push(value)
+                  }
+                })
+              }
+              normaliseList(teacher?.courses).forEach((courseName) => {
+                const matchId = courseByName.get(courseName.toLowerCase())
+                if (typeof matchId === 'number') {
+                  requestedCourseIds.push(matchId)
                 }
               })
-            }
-            const byName = normaliseList(teacher?.courses ?? teacher?.course)
-            byName.forEach((courseName) => {
-              const matchId = coursesByName.get(courseName.toLowerCase())
-              if (typeof matchId === 'number') {
-                requestedCourseIds.push(matchId)
+
+              const courseIds = Array.from(new Set(requestedCourseIds)).filter((courseId) => {
+                const course = courseById.get(courseId)
+                return course ? course.levelId === levelId : false
+              })
+
+              if (courseIds.length === 0 && courses.length > 0) {
+                const fallback = courses.find((course) => course.levelId === levelId)
+                if (fallback) {
+                  courseIds.push(fallback.id)
+                }
+              }
+
+              if (courseIds.length === 0) {
+                return null
+              }
+
+              const subjectType = new Map(subjects.map((subject) => [subject.id, subject.type]))
+              const teachesSpecial = subjectIds.some((subjectId) => subjectType.get(subjectId) === 'Especial')
+              const resolvedCourseIds = teachesSpecial ? courseIds : courseIds.slice(0, 1)
+
+              const weeklyHours = Math.max(1, Number(teacher?.weeklyHours) || 1)
+              const contractType: TeacherContractType = weeklyHours >= 30 ? 'full-time' : 'part-time'
+
+              return {
+                id: teacher?.id ?? Date.now() + index,
+                name,
+                subjectIds,
+                levelId,
+                courseIds: resolvedCourseIds,
+                weeklyHours,
+                contractType
               }
             })
+            .filter((teacher: TeacherData | null): teacher is TeacherData => Boolean(teacher))
 
-            let filteredCourseIds = Array.from(new Set(requestedCourseIds)).filter((courseId) =>
-              coursesById.has(courseId)
-            )
-            if (filteredCourseIds.length === 0 && courses.length > 0) {
-              filteredCourseIds = [courses[index % courses.length].id]
-            }
-
-            const primaryCourse = filteredCourseIds
-              .map((courseId) => coursesById.get(courseId))
-              .find((course) => course?.levelId === levelId)
-            const resolvedLevelId = primaryCourse?.levelId ?? coursesById.get(filteredCourseIds[0])?.levelId ?? levelId
-
-            const teachesSpecial = subjectNames.some(
-              (subject) => subjectTypeMap.get(subject.toLowerCase()) === 'Especial'
-            )
-            const resolvedCourseIds = teachesSpecial
-              ? filteredCourseIds
-              : filteredCourseIds.slice(0, 1)
-
-            return {
-              id: teacher?.id ?? Date.now() + index,
-              name,
-              subjects: subjectNames,
-              levelId: resolvedLevelId ?? DEFAULT_LEVEL_ID,
-              courseIds: resolvedCourseIds,
-              weeklyHours: Math.max(1, Number(teacher?.weeklyHours) || 1)
-            }
-          })
-          .filter((teacher: TeacherData | null): teacher is TeacherData =>
-            Boolean(teacher && teacher.courseIds.length > 0)
-          )
-
-        return {
-          levels: FIXED_LEVELS,
-          classrooms: classrooms.length > 0 ? classrooms : defaultState.classrooms,
-          subjects: subjects.length > 0 ? subjects : defaultState.subjects,
-          courses: courses.length > 0 ? courses : defaultState.courses,
-          teachers: teachers.length > 0 ? teachers : defaultState.teachers
-        } as SchedulerState
+          return {
+            levels: FIXED_LEVELS,
+            classrooms,
+            subjects,
+            courses: courses.length > 0 ? courses : defaultState.courses,
+            teachers: teachers.length > 0 ? teachers : defaultState.teachers
+          } as SchedulerState
+        } catch (error) {
+          console.warn('No fue posible migrar el estado anterior, se usarán valores por defecto.', error)
+          return {
+            levels: FIXED_LEVELS,
+            classrooms: defaultState.classrooms,
+            subjects: defaultState.subjects,
+            courses: defaultState.courses,
+            teachers: defaultState.teachers
+          }
+        }
       }
     }
   )

@@ -1,9 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from 'react-query'
-import { fetchConfig, updateConfig, type CycleConfig } from '../services/configService'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import {
+  fetchConfig,
+  updateConfig,
+  type AdministrativeBlock,
+  type LevelScheduleConfig
+} from '../services/configService'
+import { FIXED_LEVELS } from '../store/useSchedulerData'
+import { WORKING_DAYS } from '../utils/schedulePreview'
 
-interface CycleForm extends CycleConfig {
-  levelsInput: string
+interface AdministrativeBlockForm extends AdministrativeBlock {
+  id: string
+}
+
+interface LevelScheduleForm extends LevelScheduleConfig {
+  administrativeBlocks: AdministrativeBlockForm[]
 }
 
 export function ConfigPanel() {
@@ -19,26 +30,12 @@ export function ConfigPanel() {
       dayStart: '08:00',
       lunchStart: '13:00',
       lunchDuration: 60,
-      cycles: [
-        {
-          id: 'ciclo-basico-i',
-          name: 'Ciclo Básico I',
-          levels: ['1° Básico', '2° Básico', '3° Básico'],
-          endTime: '13:00'
-        },
-        {
-          id: 'ciclo-basico-ii',
-          name: 'Ciclo Básico II',
-          levels: ['4° Básico', '5° Básico'],
-          endTime: '15:00'
-        },
-        {
-          id: 'ciclo-media',
-          name: 'Ciclo Media',
-          levels: ['1° Medio', '2° Medio', '3° Medio', '4° Medio'],
-          endTime: '17:00'
-        }
-      ]
+      fullTimeWeeklyHours: 38,
+      levelSchedules: FIXED_LEVELS.map((level, index) => ({
+        levelId: level.id,
+        endTime: index === 0 ? '13:00' : index === 1 ? '15:00' : '17:00',
+        administrativeBlocks: []
+      }))
     }
   })
   const [color, setColor] = useState('#2563eb')
@@ -48,11 +45,14 @@ export function ConfigPanel() {
   const [dayStart, setDayStart] = useState('08:00')
   const [lunchStart, setLunchStart] = useState('13:00')
   const [lunchDuration, setLunchDuration] = useState(60)
-  const [cycles, setCycles] = useState<CycleForm[]>([])
+  const [fullTimeWeeklyHours, setFullTimeWeeklyHours] = useState(38)
+  const [levelSchedules, setLevelSchedules] = useState<LevelScheduleForm[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   const mutation = useMutation(updateConfig, {
     onSuccess: (updated) => {
       queryClient.setQueryData(['config'], updated)
+      setError(null)
     }
   })
 
@@ -65,11 +65,19 @@ export function ConfigPanel() {
       setDayStart(data.dayStart ?? '08:00')
       setLunchStart(data.lunchStart ?? '13:00')
       setLunchDuration(data.lunchDuration ?? 60)
-      setCycles(
-        (data.cycles ?? []).map((cycle) => ({
-          ...cycle,
-          levelsInput: cycle.levels.join(', ')
-        }))
+      setFullTimeWeeklyHours(data.fullTimeWeeklyHours ?? 38)
+      setLevelSchedules(
+        FIXED_LEVELS.map((level) => {
+          const match = data.levelSchedules?.find((schedule) => schedule.levelId === level.id)
+          return {
+            levelId: level.id,
+            endTime: match?.endTime ?? (level.id === 'parvulario' ? '13:00' : level.id === 'basico' ? '15:00' : '17:00'),
+            administrativeBlocks: (match?.administrativeBlocks ?? []).map((block) => ({
+              ...block,
+              id: `${level.id}-${block.day}-${block.start}-${block.end}`
+            }))
+          }
+        })
       )
     }
   }, [data])
@@ -77,6 +85,64 @@ export function ConfigPanel() {
   useEffect(() => {
     document.documentElement.style.setProperty('--brand-color', color)
   }, [color])
+
+  const lunchStartMinutes = useMemo(() => {
+    const [hours = '0', minutes = '0'] = (lunchStart ?? '00:00').split(':')
+    return Number(hours) * 60 + Number(minutes)
+  }, [lunchStart])
+
+  const lunchEndMinutes = lunchStartMinutes + Math.max(0, lunchDuration)
+
+  const validateSchedules = () => {
+    for (const schedule of levelSchedules) {
+      for (const block of schedule.administrativeBlocks) {
+        const [startHour = '0', startMinute = '0'] = block.start.split(':')
+        const [endHour = '0', endMinute = '0'] = block.end.split(':')
+        const startMinutes = Number(startHour) * 60 + Number(startMinute)
+        const endMinutes = Number(endHour) * 60 + Number(endMinute)
+
+        if (!block.start || !block.end || startMinutes >= endMinutes) {
+          setError('Verifica que las horas administrativas tengan un rango válido (inicio menor que término).')
+          return false
+        }
+
+        const overlapsLunch =
+          lunchDuration > 0 &&
+          ((startMinutes >= lunchStartMinutes && startMinutes < lunchEndMinutes) ||
+            (endMinutes > lunchStartMinutes && endMinutes <= lunchEndMinutes) ||
+            (startMinutes <= lunchStartMinutes && endMinutes >= lunchEndMinutes))
+
+        if (overlapsLunch) {
+          setError('Las horas administrativas no pueden coincidir con el horario de almuerzo configurado.')
+          return false
+        }
+      }
+    }
+
+    setError(null)
+    return true
+  }
+
+  const handleSave = () => {
+    if (!validateSchedules()) {
+      return
+    }
+
+    mutation.mutate({
+      schoolName,
+      primaryColor: color,
+      blockDuration,
+      theme,
+      dayStart,
+      lunchStart,
+      lunchDuration,
+      fullTimeWeeklyHours,
+      levelSchedules: levelSchedules.map(({ administrativeBlocks, ...rest }) => ({
+        ...rest,
+        administrativeBlocks: administrativeBlocks.map(({ id, ...block }) => block)
+      }))
+    })
+  }
 
   return (
     <section className="grid gap-6">
@@ -151,105 +217,189 @@ export function ConfigPanel() {
           </p>
         </div>
         <div className="grid gap-4 rounded-lg border border-dashed border-slate-300 p-4 dark:border-slate-700">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Ciclos académicos</h2>
-            <button
-              type="button"
-              onClick={() =>
-                setCycles((current) => [
-                  ...current,
-                  {
-                    id: `cycle-${Date.now()}`,
-                    name: 'Nuevo ciclo',
-                    levels: [],
-                    levelsInput: '',
-                    endTime: '15:00'
-                  }
-                ])
-              }
-              className="rounded border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand hover:text-brand dark:border-slate-600 dark:text-slate-300 dark:hover:border-brand/60 dark:hover:text-brand"
-            >
-              Agregar ciclo
-            </button>
-          </div>
-          {cycles.length === 0 ? (
-            <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-500 dark:border-slate-600 dark:text-slate-400">
-              Define al menos un ciclo para controlar las horas máximas por día según los niveles.
-            </p>
-          ) : (
-            <div className="grid gap-3">
-              {cycles.map((cycle, index) => (
-                <div key={cycle.id} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">{cycle.name}</h3>
-                    <div className="flex items-center gap-2 text-xs text-slate-400 dark:text-slate-500">
-                      <span>Ciclo #{index + 1}</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setCycles((current) => current.filter((item) => item.id !== cycle.id))
-                        }
-                        className="rounded border border-transparent px-2 py-1 font-semibold text-rose-500 transition hover:border-rose-300 hover:bg-rose-50 dark:hover:border-rose-400 dark:hover:bg-rose-400/10"
-                      >
-                        Eliminar
-                      </button>
+          <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Horarios por nivel</h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Define la hora de término diaria y las horas administrativas donde no se pueden agendar clases.
+          </p>
+          <div className="grid gap-4">
+            {levelSchedules.map((schedule) => {
+              const level = FIXED_LEVELS.find((item) => item.id === schedule.levelId)
+              return (
+                <div key={schedule.levelId} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                  <header className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">{level?.name ?? schedule.levelId}</h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Ajusta la jornada y agrega horas administrativas específicas por día.
+                      </p>
                     </div>
-                  </div>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    <label className="grid gap-1 text-sm">
-                      <span className="text-slate-600 dark:text-slate-300">Nombre</span>
-                      <input
-                        value={cycle.name}
-                        onChange={(event) =>
-                          setCycles((current) =>
-                            current.map((item) =>
-                              item.id === cycle.id ? { ...item, name: event.target.value } : item
-                            )
-                          )
-                        }
-                        maxLength={50}
-                        className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                      />
-                    </label>
+                  </header>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
                     <label className="grid gap-1 text-sm">
                       <span className="text-slate-600 dark:text-slate-300">Hora de término diaria</span>
                       <input
                         type="time"
-                        value={cycle.endTime}
+                        value={schedule.endTime}
                         onChange={(event) =>
-                          setCycles((current) =>
+                          setLevelSchedules((current) =>
                             current.map((item) =>
-                              item.id === cycle.id ? { ...item, endTime: event.target.value } : item
+                              item.levelId === schedule.levelId ? { ...item, endTime: event.target.value } : item
                             )
                           )
                         }
                         className="w-40 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
                       />
                     </label>
-                  </div>
-                  <label className="mt-3 grid gap-1 text-sm">
-                    <span className="text-slate-600 dark:text-slate-300">Niveles (separados por coma)</span>
-                    <textarea
-                      value={cycle.levelsInput}
-                      onChange={(event) =>
-                        setCycles((current) =>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLevelSchedules((current) =>
                           current.map((item) =>
-                            item.id === cycle.id ? { ...item, levelsInput: event.target.value } : item
+                            item.levelId === schedule.levelId
+                              ? {
+                                  ...item,
+                                  administrativeBlocks: [
+                                    ...item.administrativeBlocks,
+                                    {
+                                      id: `${schedule.levelId}-${Date.now()}`,
+                                      day: WORKING_DAYS[0],
+                                      start: '14:00',
+                                      end: '15:00'
+                                    }
+                                  ]
+                                }
+                              : item
                           )
                         )
                       }
-                      rows={2}
-                      className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                    />
-                  </label>
+                      className="self-end rounded border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand hover:text-brand dark:border-slate-600 dark:text-slate-300 dark:hover:border-brand/60 dark:hover:text-brand"
+                    >
+                      Agregar hora administrativa
+                    </button>
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    {schedule.administrativeBlocks.length === 0 ? (
+                      <p className="rounded border border-dashed border-slate-300 p-3 text-xs text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                        No hay horas administrativas configuradas para este nivel.
+                      </p>
+                    ) : (
+                      schedule.administrativeBlocks.map((block) => (
+                        <div
+                          key={block.id}
+                          className="grid gap-3 rounded border border-slate-200 p-3 text-sm dark:border-slate-600 sm:grid-cols-4"
+                        >
+                          <label className="grid gap-1">
+                            <span className="text-slate-600 dark:text-slate-300">Día</span>
+                            <select
+                              value={block.day}
+                              onChange={(event) =>
+                                setLevelSchedules((current) =>
+                                  current.map((item) =>
+                                    item.levelId === schedule.levelId
+                                      ? {
+                                          ...item,
+                                          administrativeBlocks: item.administrativeBlocks.map((inner) =>
+                                            inner.id === block.id ? { ...inner, day: event.target.value } : inner
+                                          )
+                                        }
+                                      : item
+                                  )
+                                )
+                              }
+                              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                            >
+                              {WORKING_DAYS.map((day) => (
+                                <option key={`${schedule.levelId}-${block.id}-${day}`} value={day}>
+                                  {day}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="grid gap-1">
+                            <span className="text-slate-600 dark:text-slate-300">Inicio</span>
+                            <input
+                              type="time"
+                              value={block.start}
+                              onChange={(event) =>
+                                setLevelSchedules((current) =>
+                                  current.map((item) =>
+                                    item.levelId === schedule.levelId
+                                      ? {
+                                          ...item,
+                                          administrativeBlocks: item.administrativeBlocks.map((inner) =>
+                                            inner.id === block.id ? { ...inner, start: event.target.value } : inner
+                                          )
+                                        }
+                                      : item
+                                  )
+                                )
+                              }
+                              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                            />
+                          </label>
+                          <label className="grid gap-1">
+                            <span className="text-slate-600 dark:text-slate-300">Término</span>
+                            <input
+                              type="time"
+                              value={block.end}
+                              onChange={(event) =>
+                                setLevelSchedules((current) =>
+                                  current.map((item) =>
+                                    item.levelId === schedule.levelId
+                                      ? {
+                                          ...item,
+                                          administrativeBlocks: item.administrativeBlocks.map((inner) =>
+                                            inner.id === block.id ? { ...inner, end: event.target.value } : inner
+                                          )
+                                        }
+                                      : item
+                                  )
+                                )
+                              }
+                              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                            />
+                          </label>
+                          <div className="flex items-end">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setLevelSchedules((current) =>
+                                  current.map((item) =>
+                                    item.levelId === schedule.levelId
+                                      ? {
+                                          ...item,
+                                          administrativeBlocks: item.administrativeBlocks.filter((inner) => inner.id !== block.id)
+                                        }
+                                      : item
+                                  )
+                                )
+                              }
+                              className="rounded border border-transparent px-3 py-2 text-xs font-semibold text-rose-500 transition hover:border-rose-300 hover:bg-rose-50 dark:hover:border-rose-400 dark:hover:bg-rose-400/10"
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
-              ))}
-            </div>
-          )}
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Cada ciclo limita la cantidad de bloques diarios disponibles para los cursos asociados y se aplica automáticamente en la generación.
-          </p>
+              )
+            })}
+          </div>
         </div>
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">
+            Horas semanales contrato tiempo completo
+          </span>
+          <input
+            type="number"
+            min={1}
+            value={fullTimeWeeklyHours}
+            onChange={(event) => setFullTimeWeeklyHours(Math.max(1, Number(event.target.value) || 1))}
+            className="w-32 rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+          />
+        </label>
         <label className="grid gap-2">
           <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Tema de la aplicación</span>
           <select
@@ -261,25 +411,9 @@ export function ConfigPanel() {
             <option value="dark">Oscuro</option>
           </select>
         </label>
+        {error && <p className="text-sm text-rose-500">{error}</p>}
         <button
-          onClick={() =>
-            mutation.mutate({
-              schoolName,
-              primaryColor: color,
-              blockDuration,
-              theme,
-              dayStart,
-              lunchStart,
-              lunchDuration,
-              cycles: cycles.map(({ levelsInput, ...rest }) => ({
-                ...rest,
-                levels: levelsInput
-                  .split(',')
-                  .map((value) => value.trim())
-                  .filter(Boolean)
-              }))
-            })
-          }
+          onClick={handleSave}
           className="mt-4 w-fit rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
           disabled={mutation.isLoading}
         >

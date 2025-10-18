@@ -1,12 +1,5 @@
 import axios from 'axios'
 
-export interface CycleConfig {
-  id: string
-  name: string
-  levels: string[]
-  endTime: string
-}
-
 export interface ConfigResponse {
   schoolName?: string
   primaryColor?: string
@@ -15,7 +8,20 @@ export interface ConfigResponse {
   dayStart?: string
   lunchStart?: string
   lunchDuration?: number
-  cycles?: CycleConfig[]
+  fullTimeWeeklyHours?: number
+  levelSchedules?: LevelScheduleConfig[]
+}
+
+export interface AdministrativeBlock {
+  day: string
+  start: string
+  end: string
+}
+
+export interface LevelScheduleConfig {
+  levelId: string
+  endTime: string
+  administrativeBlocks: AdministrativeBlock[]
 }
 
 const LOCAL_STORAGE_KEY = 'scheduler-config-cache'
@@ -23,7 +29,16 @@ const LOCAL_STORAGE_KEY = 'scheduler-config-cache'
 const defaultConfig: Required<
   Pick<
     ConfigResponse,
-    'schoolName' | 'primaryColor' | 'blockDuration' | 'theme' | 'dayStart' | 'lunchStart' | 'lunchDuration' | 'cycles'
+    |
+      'schoolName'
+      | 'primaryColor'
+      | 'blockDuration'
+      | 'theme'
+      | 'dayStart'
+      | 'lunchStart'
+      | 'lunchDuration'
+      | 'fullTimeWeeklyHours'
+      | 'levelSchedules'
   >
 > = {
   schoolName: 'School Scheduler',
@@ -33,24 +48,22 @@ const defaultConfig: Required<
   dayStart: '08:00',
   lunchStart: '13:00',
   lunchDuration: 60,
-  cycles: [
+  fullTimeWeeklyHours: 38,
+  levelSchedules: [
     {
-      id: 'ciclo-basico-i',
-      name: 'Ciclo Básico I',
-      levels: ['1° Básico', '2° Básico', '3° Básico'],
-      endTime: '13:00'
+      levelId: 'parvulario',
+      endTime: '13:00',
+      administrativeBlocks: []
     },
     {
-      id: 'ciclo-basico-ii',
-      name: 'Ciclo Básico II',
-      levels: ['4° Básico', '5° Básico'],
-      endTime: '15:00'
+      levelId: 'basico',
+      endTime: '15:00',
+      administrativeBlocks: []
     },
     {
-      id: 'ciclo-media',
-      name: 'Ciclo Media',
-      levels: ['1° Medio', '2° Medio', '3° Medio', '4° Medio'],
-      endTime: '17:00'
+      levelId: 'media',
+      endTime: '17:00',
+      administrativeBlocks: []
     }
   ]
 }
@@ -96,7 +109,11 @@ function mergeWithDefaults(config?: ConfigResponse): ConfigResponse {
   return {
     ...defaultConfig,
     ...merged,
-    cycles: merged?.cycles?.length ? merged.cycles : defaultConfig.cycles
+    levelSchedules: merged?.levelSchedules?.length ? merged.levelSchedules : defaultConfig.levelSchedules,
+    fullTimeWeeklyHours:
+      typeof merged?.fullTimeWeeklyHours === 'number'
+        ? Math.max(0, merged.fullTimeWeeklyHours)
+        : defaultConfig.fullTimeWeeklyHours
   }
 }
 
@@ -120,7 +137,8 @@ interface UpdateConfigPayload {
   dayStart: string
   lunchStart: string
   lunchDuration: number
-  cycles: CycleConfig[]
+  fullTimeWeeklyHours: number
+  levelSchedules: LevelScheduleConfig[]
 }
 
 export async function updateConfig(payload: UpdateConfigPayload): Promise<ConfigResponse> {

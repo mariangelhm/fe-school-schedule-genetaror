@@ -23,19 +23,15 @@ export function ClassroomsPage() {
       return
     }
 
-    const normalisedName = draft.name.trim().toLowerCase()
-    const exists = classrooms.some(
-      (classroom) => classroom.id !== editingId && classroom.name.trim().toLowerCase() === normalisedName
-    )
-    if (exists) {
-      setError('Ya existe un aula con ese nombre. Ingresa un nombre diferente.')
-      return
+    const payload: Omit<ClassroomData, 'id'> = {
+      name: draft.name,
+      levelId: draft.levelId
     }
 
-    if (editingId) {
-      updateClassroom(editingId, draft)
-    } else {
-      addClassroom(draft)
+    const success = editingId ? updateClassroom(editingId, payload) : addClassroom(payload)
+    if (!success) {
+      setError('Ya existe un aula con ese nombre para este nivel.')
+      return
     }
 
     setError(null)
