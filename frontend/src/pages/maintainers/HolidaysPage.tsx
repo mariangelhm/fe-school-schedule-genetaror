@@ -1,0 +1,144 @@
+import { FormEvent, useState } from 'react'
+import { MaintenanceLayout } from '../../components/MaintenanceLayout'
+import { useSchedulerDataStore, type HolidayData } from '../../store/useSchedulerData'
+
+const today = new Date()
+
+function formatDateForInput(date: Date) {
+  return date.toISOString().split('T')[0]
+}
+
+const emptyHoliday: Omit<HolidayData, 'id'> = {
+  date: formatDateForInput(today),
+  description: ''
+}
+
+export function HolidaysPage() {
+  const holidays = useSchedulerDataStore((state) => state.holidays)
+  const addHoliday = useSchedulerDataStore((state) => state.addHoliday)
+  const updateHoliday = useSchedulerDataStore((state) => state.updateHoliday)
+  const removeHoliday = useSchedulerDataStore((state) => state.removeHoliday)
+  const [draft, setDraft] = useState<Omit<HolidayData, 'id'>>({ ...emptyHoliday })
+  const [editingId, setEditingId] = useState<number | null>(null)
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!draft.description.trim()) {
+      return
+    }
+
+    if (editingId) {
+      updateHoliday(editingId, draft)
+    } else {
+      addHoliday(draft)
+    }
+
+    setDraft({ ...emptyHoliday })
+    setEditingId(null)
+  }
+
+  const handleEdit = (holiday: HolidayData) => {
+    setEditingId(holiday.id)
+    setDraft({ date: holiday.date, description: holiday.description })
+  }
+
+  const handleCancel = () => {
+    setEditingId(null)
+    setDraft({ ...emptyHoliday })
+  }
+
+  const handleDelete = (id: number) => {
+    removeHoliday(id)
+    if (editingId === id) {
+      handleCancel()
+    }
+  }
+
+  return (
+    <MaintenanceLayout
+      title="Feriados"
+      description="Registra los días feriados para excluirlos automáticamente durante la generación de horarios."
+    >
+      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+          <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
+            <thead className="bg-slate-50 dark:bg-slate-800/80">
+              <tr className="text-left">
+                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Fecha</th>
+                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Descripción</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+              {holidays.map((holiday) => (
+                <tr key={holiday.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
+                  <td className="px-4 py-3 font-medium">{holiday.date}</td>
+                  <td className="px-4 py-3">{holiday.description}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-3">
+                      <button
+                        className="text-sm text-slate-500 transition hover:text-brand"
+                        type="button"
+                        onClick={() => handleEdit(holiday)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="text-sm text-rose-500 transition hover:text-rose-600"
+                        type="button"
+                        onClick={() => handleDelete(holiday.id)}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {holidays.length === 0 && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                    No hay feriados registrados.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <form
+          onSubmit={handleSubmit}
+          className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-800/60"
+        >
+          <h2 className="text-lg font-semibold">{editingId ? 'Editar feriado' : 'Nuevo feriado'}</h2>
+          <label className="grid gap-2 text-sm">
+            <span className="font-medium text-slate-600 dark:text-slate-300">Fecha</span>
+            <input
+              type="date"
+              value={draft.date}
+              onChange={(event) => setDraft((current) => ({ ...current, date: event.target.value }))}
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+            />
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-medium text-slate-600 dark:text-slate-300">Descripción</span>
+            <input
+              value={draft.description}
+              onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+              required
+            />
+          </label>
+          <div className="flex items-center gap-3">
+            <button type="submit" className="rounded bg-brand-dynamic px-4 py-2 text-sm font-semibold text-white">
+              {editingId ? 'Actualizar feriado' : 'Guardar feriado'}
+            </button>
+            {editingId && (
+              <button type="button" className="text-sm text-slate-500 hover:text-slate-700" onClick={handleCancel}>
+                Cancelar
+              </button>
+            )}
+          </div>
+        </form>
+      </div>
+    </MaintenanceLayout>
+  )
+}
