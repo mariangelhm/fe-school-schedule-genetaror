@@ -1,3 +1,5 @@
+// Vista de administración de cursos: vincula aulas exclusivas, niveles fijos y
+// profesor jefe para Media.
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import {

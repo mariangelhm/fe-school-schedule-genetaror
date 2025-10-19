@@ -1,3 +1,5 @@
+// Vista para administrar profesores: aplica las reglas sobre asignación por
+// nivel, cursos permitidos y contratos.
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useQuery } from 'react-query'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'

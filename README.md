@@ -10,8 +10,8 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 - Mantenedores con datos persistidos en el navegador para trabajar sin backend durante las demos y soportar edición completa.
 - Uso de una lista fija de niveles académicos (Parvulario, Básico y Media) compartida entre asignaturas, cursos y docentes.
 - Gestión completa de aulas, cursos, asignaturas y profesores desde el Dashboard con accesos rápidos y tablas actualizadas en vivo.
-- Previsualización de horarios que respeta configuraciones globales antes de confirmar la generación real.
-- Reacomodo manual de bloques por drag & drop, ciclos académicos configurables y bloque de almuerzo visible en el calendario.
+- Previsualización de horarios por nivel con pestañas de cursos/profesores, filtros y exportación rápida a PDF.
+- Distribución automática que respeta preferencia horaria de asignaturas, bloques administrativos y bloque de almuerzo visible en la grilla.
 - Configuraciones de niveles y cargas horarias totalmente desconectadas de feriados/eventos (el mantenedor se concentra en académica pura).
 - Ruteo con `react-router-dom` y componentes reutilizables para paneles, mantenedores y vistas de calendario.
 - Integración prevista con un gateway/API externa protegida con JWT.
@@ -22,7 +22,8 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 - **Asignaturas por ciclo:** configura cuántos bloques debe cursar cada ciclo para una asignatura específica y establece límites máximos diarios antes de generar los horarios.
 - **Niveles predefinidos:** las pantallas de asignaturas, cursos, profesores y aulas utilizan siempre los niveles "Parvulario", "Básico" y "Media" para mantener consistencia con el backend y evitar configuraciones incongruentes.
 - **Bloque de almuerzo:** especifica el inicio y duración del almuerzo. El bloque aparece resaltado en las previsualizaciones y se descuenta de la capacidad diaria disponible.
-- **Previsualización editable:** antes de generar los horarios definitivos puedes arrastrar cada clase a otro día o bloque para ajustar manualmente la malla.
+- **Previsualización por nivel:** antes de confirmar puedes revisar tablas por curso o profesor, filtrar rápidamente y descargar el resultado en PDF.
+- **Preferencias horarias:** cada asignatura puede indicar si prefiere jornada mañana o tarde y el generador intentará respetarlo en la distribución.
 - Todas las configuraciones se guardan en el navegador (localStorage) cuando no hay backend disponible, permitiendo demos sin conexión.
 
 ## Reglas funcionales de los mantenedores

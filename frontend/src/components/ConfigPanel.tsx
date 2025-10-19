@@ -1,3 +1,6 @@
+// Este formulario permite editar los parámetros globales que afectan la
+// generación de horarios, incluyendo nombre del colegio, jornadas por nivel y
+// bloques administrativos.
 import { useMutation, useQuery, useQueryClient } from 'react-query'
 import { useEffect, useMemo, useState } from 'react'
 import {
@@ -24,7 +27,6 @@ export function ConfigPanel() {
     refetchOnWindowFocus: false,
     placeholderData: {
       schoolName: 'School Scheduler',
-      primaryColor: '#2563eb',
       blockDuration: 45,
       theme: 'dark',
       dayStart: '08:00',
@@ -38,7 +40,6 @@ export function ConfigPanel() {
       }))
     }
   })
-  const [color, setColor] = useState('#2563eb')
   const [schoolName, setSchoolName] = useState('School Scheduler')
   const [blockDuration, setBlockDuration] = useState(45)
   const [theme, setTheme] = useState<'light' | 'dark'>('dark')
@@ -58,7 +59,6 @@ export function ConfigPanel() {
 
   useEffect(() => {
     if (data) {
-      setColor(data.primaryColor ?? '#2563eb')
       setSchoolName(data.schoolName ?? 'School Scheduler')
       setBlockDuration(data.blockDuration ?? 45)
       setTheme(data.theme ?? 'dark')
@@ -81,10 +81,6 @@ export function ConfigPanel() {
       )
     }
   }, [data])
-
-  useEffect(() => {
-    document.documentElement.style.setProperty('--brand-color', color)
-  }, [color])
 
   const lunchStartMinutes = useMemo(() => {
     const [hours = '0', minutes = '0'] = (lunchStart ?? '00:00').split(':')
@@ -130,7 +126,6 @@ export function ConfigPanel() {
 
     mutation.mutate({
       schoolName,
-      primaryColor: color,
       blockDuration,
       theme,
       dayStart,
@@ -158,15 +153,6 @@ export function ConfigPanel() {
             onChange={(event) => setSchoolName(event.target.value)}
             maxLength={50}
             className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-          />
-        </label>
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Color principal</span>
-          <input
-            type="color"
-            value={color}
-            onChange={(event) => setColor(event.target.value)}
-            className="h-10 w-24 cursor-pointer rounded border border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-900"
           />
         </label>
         <label className="grid gap-2">

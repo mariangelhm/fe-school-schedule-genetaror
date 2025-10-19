@@ -1,8 +1,9 @@
+// Este módulo encapsula la lectura y escritura de la configuración global
+// empleada por el frontend para simular la respuesta de un backend.
 import axios from 'axios'
 
 export interface ConfigResponse {
   schoolName?: string
-  primaryColor?: string
   blockDuration?: number
   theme?: 'light' | 'dark'
   dayStart?: string
@@ -31,7 +32,6 @@ const defaultConfig: Required<
     ConfigResponse,
     |
       'schoolName'
-      | 'primaryColor'
       | 'blockDuration'
       | 'theme'
       | 'dayStart'
@@ -42,7 +42,6 @@ const defaultConfig: Required<
   >
 > = {
   schoolName: 'School Scheduler',
-  primaryColor: '#2563eb',
   blockDuration: 45,
   theme: 'dark',
   dayStart: '08:00',
@@ -131,7 +130,6 @@ export async function fetchConfig(): Promise<ConfigResponse> {
 
 interface UpdateConfigPayload {
   schoolName: string
-  primaryColor: string
   blockDuration: number
   theme: 'light' | 'dark'
   dayStart: string

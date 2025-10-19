@@ -1,7 +1,11 @@
+// Este store de Zustand concentra los datos maestros (aulas, asignaturas,
+// cursos y profesores) y garantiza las reglas de negocio exigidas por el
+// generador de horarios.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 type SubjectType = 'Normal' | 'Especial'
+export type SubjectPreferredTime = 'morning' | 'afternoon' | 'any'
 
 export interface LevelData {
   id: string
@@ -16,6 +20,7 @@ export interface SubjectData {
   maxDailyBlocks: number
   type: SubjectType
   color: string
+  preferredTime: SubjectPreferredTime
 }
 
 export interface ClassroomData {
@@ -87,7 +92,8 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
       weeklyBlocks: 10,
       maxDailyBlocks: 2,
       type: 'Normal',
-      color: '#2563eb'
+      color: '#2563eb',
+      preferredTime: 'morning'
     },
     {
       id: 2,
@@ -96,7 +102,8 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
       weeklyBlocks: 9,
       maxDailyBlocks: 2,
       type: 'Normal',
-      color: '#9333ea'
+      color: '#9333ea',
+      preferredTime: 'morning'
     },
     {
       id: 3,
@@ -105,7 +112,8 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
       weeklyBlocks: 4,
       maxDailyBlocks: 1,
       type: 'Especial',
-      color: '#eab308'
+      color: '#eab308',
+      preferredTime: 'afternoon'
     }
   ],
   courses: [
@@ -231,7 +239,8 @@ export const useSchedulerDataStore = create<SchedulerState>()(
                 weeklyBlocks: Math.max(1, Number(subject.weeklyBlocks) || 1),
                 maxDailyBlocks: Math.max(1, Number(subject.maxDailyBlocks) || 1),
                 type: subject.type,
-                color: subject.color
+                color: subject.color,
+                preferredTime: subject.preferredTime ?? 'any'
               },
               ...state.subjects
             ]
@@ -265,7 +274,8 @@ export const useSchedulerDataStore = create<SchedulerState>()(
                   weeklyBlocks: Math.max(1, Number(subject.weeklyBlocks) || 1),
                   maxDailyBlocks: Math.max(1, Number(subject.maxDailyBlocks) || 1),
                   type: subject.type,
-                  color: subject.color
+                  color: subject.color,
+                  preferredTime: subject.preferredTime ?? 'any'
                 }
               : item
           )
@@ -592,7 +602,8 @@ export const useSchedulerDataStore = create<SchedulerState>()(
                 weeklyBlocks,
                 maxDailyBlocks,
                 type,
-                color
+                color,
+                preferredTime: 'any'
               }
               const key = `${name.toLowerCase()}|${levelId}`
               if (!subjectLookup.has(key)) {

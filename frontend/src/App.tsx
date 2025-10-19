@@ -1,3 +1,6 @@
+// Este componente centraliza la definición de rutas y aplica los ajustes visuales
+// globales (tema, nombre del colegio) que se obtienen desde la configuración
+// persistida en localStorage o simulada por axios.
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useQuery } from 'react-query'
@@ -18,7 +21,6 @@ export default function App() {
     refetchOnWindowFocus: false,
     initialData: {
       schoolName: 'School Scheduler',
-      primaryColor: '#2563eb',
       theme: 'dark',
       blockDuration: 45,
       dayStart: '08:00',
@@ -29,10 +31,6 @@ export default function App() {
 
   const schoolName = data?.schoolName ?? 'School Scheduler'
   const theme = data?.theme ?? 'dark'
-
-  useEffect(() => {
-    document.documentElement.style.setProperty('--brand-color', data?.primaryColor ?? '#2563eb')
-  }, [data?.primaryColor])
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', theme === 'dark')

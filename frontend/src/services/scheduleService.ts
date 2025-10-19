@@ -1,5 +1,5 @@
-import axios from 'axios'
-
+// Servicio simulado para confirmar la generación. En un escenario real haría
+// la llamada al backend, pero aquí devolvemos una respuesta inmediata.
 export interface ScheduleSummary {
   generatedCourses: number
   assignedTeachers: number
@@ -7,23 +7,11 @@ export interface ScheduleSummary {
 }
 
 export interface GenerationPayload {
-  mode: 'full' | 'course'
+  levelId: string
   year: number
   replaceExisting: boolean
-  courseId?: number
 }
 
-export async function fetchScheduleSummary(): Promise<ScheduleSummary> {
-  const { data } = await axios.get<ScheduleSummary>('schedule/summary')
-  return data
-}
-
-export async function generateSchedule(payload: GenerationPayload): Promise<ScheduleSummary> {
-  const { data } = await axios.post<ScheduleSummary>('schedule/generate', payload)
-  return data
-}
-
-export async function exportSchedule(format: string): Promise<{ downloadUrl: string; format: string }> {
-  const { data } = await axios.post<{ downloadUrl: string; format: string }>(`schedule/export?format=${format}`)
-  return data
+export async function generateSchedule(_: GenerationPayload): Promise<ScheduleSummary> {
+  return Promise.resolve({ generatedCourses: 0, assignedTeachers: 0, totalSessions: 0 })
 }

@@ -1,5 +1,8 @@
+// Utilidades para construir una previsualización de horarios a partir de los
+// datos del store y la configuración simulada. Se incluyen validaciones de
+// negocio, asignación de profesores y resúmenes para el tablero.
 import type { ConfigResponse } from '../services/configService'
-import type { CourseData, SubjectData, TeacherData } from '../store/useSchedulerData'
+import { FIXED_LEVELS, type CourseData, type SubjectData, type TeacherData } from '../store/useSchedulerData'
 
 export const WORKING_DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'] as const
 export const LUNCH_LABEL = 'Hora de almuerzo'
@@ -10,7 +13,7 @@ export interface PreviewCell {
   teacher?: string
   course?: string
   color: string
-  type?: 'class' | 'admin'
+  type?: 'class' | 'admin' | 'free' | 'lunch'
 }
 
 export interface PreviewRow {
@@ -25,6 +28,26 @@ export interface PreviewTable {
   rows: PreviewRow[]
 }
 
+export interface TeacherSummary {
+  teacherId: number
+  teacherName: string
+  classMinutes: number
+  administrativeMinutes: number
+  subjectMinutes: { subject: string; minutes: number }[]
+}
+
+export interface SubjectTotal {
+  subjectId: number
+  subjectName: string
+  minutes: number
+}
+
+export interface TeacherTag {
+  teacherId: number
+  teacherName: string
+  color: string
+}
+
 export interface SchedulePreview {
   days: readonly string[]
   courses: PreviewTable[]
@@ -34,6 +57,12 @@ export interface SchedulePreview {
     totalTeachers: number
     totalSessions: number
   }
+  teacherSummaries: TeacherSummary[]
+  subjectTotals: SubjectTotal[]
+  teacherTags: TeacherTag[]
+  schoolName: string
+  levelId: string
+  levelName: string
   config: {
     blockDuration: number
     dayStart: string
@@ -42,24 +71,12 @@ export interface SchedulePreview {
   }
 }
 
-interface BuildPreviewInput {
+export interface BuildPreviewInput {
+  levelId: string
   courses: CourseData[]
   subjects: SubjectData[]
   teachers: TeacherData[]
-  mode: 'full' | 'course'
-  courseId?: number
   config: ConfigResponse
-}
-
-interface SlotCell {
-  subject: string
-  teacher: string
-  color: string
-}
-
-interface CourseAssignments {
-  course: CourseData
-  daySessions: SlotCell[][]
 }
 
 interface DaySlot {
@@ -68,126 +85,30 @@ interface DaySlot {
   end: number
 }
 
+interface ClassSlotMeta {
+  start: number
+  end: number
+  timeOfDay: 'morning' | 'afternoon'
+}
+
 interface ScheduleStructureRow {
   kind: 'class' | 'lunch'
   time: string
-  classRowIndex?: number
 }
 
-function timeToMinutes(time: string): number {
-  const [hour, minute] = time.split(':').map(Number)
-  return hour * 60 + minute
+interface TimelineData {
+  perDaySlots: DaySlot[][]
+  classSlots: ClassSlotMeta[][]
+  structure: ScheduleStructureRow[]
+  adminMinutes: number
 }
 
-function minutesToTime(minutes: number): string {
-  const normalised = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60)
-  const hour = Math.floor(normalised / 60)
-  const minute = normalised % 60
-  return `${`${hour}`.padStart(2, '0')}:${`${minute}`.padStart(2, '0')}`
-}
-
-function minutesToRange(start: number, duration: number): string {
-  const end = start + duration
-  return `${minutesToTime(start)} - ${minutesToTime(end)}`
-}
-
-function normaliseName(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .replace(/[^\p{Letter}\p{Number}\s]/gu, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase()
-}
-
-function rangesOverlap(startA: number, endA: number, startB: number, endB: number) {
-  return startA < endB && endA > startB
-}
-
-function buildTimeline(
-  course: CourseData,
-  config: ConfigResponse
-): { perDaySlots: DaySlot[][]; classSlotLimits: number[]; structure: ScheduleStructureRow[] } {
-  const blockDuration = config.blockDuration ?? 45
-  const dayStartMinutes = timeToMinutes(config.dayStart ?? '08:00')
-  const lunchStartMinutes = config.lunchStart ? timeToMinutes(config.lunchStart) : null
-  const lunchDuration = Math.max(0, config.lunchDuration ?? 0)
-  const lunchEndMinutes = lunchStartMinutes !== null ? lunchStartMinutes + lunchDuration : null
-
-  const schedule = config.levelSchedules?.find((entry) => entry.levelId === course.levelId)
-  const fallbackEnd = dayStartMinutes + blockDuration * 8 + lunchDuration
-  const dayEndMinutes = schedule?.endTime ? timeToMinutes(schedule.endTime) : fallbackEnd
-
-  const perDaySlots: DaySlot[][] = WORKING_DAYS.map((day) => {
-    const administrative = schedule?.administrativeBlocks?.filter((block) => block.day === day) ?? []
-    const administrativeIntervals = administrative
-      .map((block) => ({ start: timeToMinutes(block.start), end: timeToMinutes(block.end) }))
-      .filter((interval) => interval.end > interval.start)
-
-    const slots: DaySlot[] = []
-    let pointer = dayStartMinutes
-
-    while (pointer + blockDuration <= dayEndMinutes + 1) {
-      const slotEnd = pointer + blockDuration
-      let type: DaySlot['type'] = 'class'
-
-      if (
-        lunchStartMinutes !== null &&
-        lunchDuration > 0 &&
-        rangesOverlap(pointer, slotEnd, lunchStartMinutes, lunchEndMinutes ?? lunchStartMinutes)
-      ) {
-        type = 'lunch'
-      } else if (
-        administrativeIntervals.some((interval) => rangesOverlap(pointer, slotEnd, interval.start, interval.end))
-      ) {
-        type = 'admin'
-      }
-
-      slots.push({ type, start: pointer, end: slotEnd })
-      pointer = slotEnd
-    }
-
-    return slots
-  })
-
-  const maxSlots = Math.max(...perDaySlots.map((slots) => slots.length))
-  perDaySlots.forEach((slots) => {
-    if (slots.length < maxSlots) {
-      const last = slots[slots.length - 1]
-      while (slots.length < maxSlots) {
-        const start = last ? last.end : dayStartMinutes
-        slots.push({ type: 'class', start, end: start + blockDuration })
-      }
-    }
-  })
-
-  const classSlotLimits = perDaySlots.map((slots) => slots.filter((slot) => slot.type === 'class').length)
-
-  const structure: ScheduleStructureRow[] = []
-  let classRowCounter = 0
-  perDaySlots[0].forEach((slot) => {
-    if (slot.type === 'class') {
-      structure.push({
-        kind: 'class',
-        time: minutesToRange(slot.start, blockDuration),
-        classRowIndex: classRowCounter
-      })
-      classRowCounter += 1
-    } else {
-      structure.push({
-        kind: slot.type === 'lunch' ? 'lunch' : 'class',
-        time: minutesToRange(slot.start, blockDuration)
-      })
-    }
-  })
-
-  return { perDaySlots, classSlotLimits, structure }
-}
-
-interface SubjectRequirement {
-  subject: SubjectData
-  weeklyBlocks: number
+interface SlotAssignment {
+  subjectId: number
+  subjectName: string
+  color: string
+  teacherId: number
+  teacherName: string
 }
 
 interface TeacherCapacity {
@@ -197,9 +118,146 @@ interface TeacherCapacity {
   courseIds: Set<number>
 }
 
+interface TeacherSlotRecord {
+  teacherId: number
+  teacherName: string
+  rowIndex: number
+  dayIndex: number
+  subject: string
+  color: string
+  course: string
+}
+
+function timeToMinutes(time: string): number {
+  const [hour = '0', minute = '0'] = time.split(':')
+  return Number(hour) * 60 + Number(minute)
+}
+
+function minutesToTime(minutes: number): string {
+  const total = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60)
+  const hour = Math.floor(total / 60)
+  const minute = total % 60
+  return `${`${hour}`.padStart(2, '0')}:${`${minute}`.padStart(2, '0')}`
+}
+
+function minutesToRange(start: number, duration: number): string {
+  return `${minutesToTime(start)} - ${minutesToTime(start + duration)}`
+}
+
+function determineTimeOfDay(
+  lunchStart: number | null,
+  lunchEnd: number | null,
+  slotStart: number,
+  slotEnd: number
+): 'morning' | 'afternoon' {
+  if (lunchStart === null || lunchEnd === null) {
+    return slotStart < 12 * 60 ? 'morning' : 'afternoon'
+  }
+  if (slotEnd <= lunchStart) {
+    return 'morning'
+  }
+  if (slotStart >= lunchEnd) {
+    return 'afternoon'
+  }
+  return slotStart < lunchStart ? 'morning' : 'afternoon'
+}
+
+function rangesOverlap(startA: number, endA: number, startB: number, endB: number) {
+  return startA < endB && endA > startB
+}
+
+function buildTimeline(course: CourseData, config: ConfigResponse): TimelineData {
+  const blockDuration = Math.max(30, config.blockDuration ?? 45)
+  const dayStartMinutes = timeToMinutes(config.dayStart ?? '08:00')
+  const lunchStartMinutes = config.lunchStart ? timeToMinutes(config.lunchStart) : null
+  const lunchDuration = Math.max(0, config.lunchDuration ?? 0)
+  const lunchEndMinutes =
+    lunchStartMinutes !== null ? lunchStartMinutes + lunchDuration : lunchStartMinutes
+
+  const levelSchedule = config.levelSchedules?.find((entry) => entry.levelId === course.levelId)
+  const dayEndMinutes = levelSchedule?.endTime
+    ? timeToMinutes(levelSchedule.endTime)
+    : dayStartMinutes + blockDuration * 8 + lunchDuration
+
+  const perDaySlots: DaySlot[][] = []
+  const classSlots: ClassSlotMeta[][] = []
+  let adminMinutes = 0
+
+  for (const day of WORKING_DAYS) {
+    const administrativeBlocks = levelSchedule?.administrativeBlocks?.filter(
+      (block) => block.day === day
+    )
+    const administrativeRanges = (administrativeBlocks ?? [])
+      .map((block) => ({ start: timeToMinutes(block.start), end: timeToMinutes(block.end) }))
+      .filter((range) => range.end > range.start)
+
+    const daySlots: DaySlot[] = []
+    const dayClassSlots: ClassSlotMeta[] = []
+    let pointer = dayStartMinutes
+
+    while (pointer + blockDuration <= dayEndMinutes + 1) {
+      const slotEnd = pointer + blockDuration
+      let type: DaySlot['type'] = 'class'
+      if (
+        lunchStartMinutes !== null &&
+        lunchDuration > 0 &&
+        rangesOverlap(pointer, slotEnd, lunchStartMinutes, lunchEndMinutes ?? lunchStartMinutes)
+      ) {
+        type = 'lunch'
+      } else if (
+        administrativeRanges.some((range) => rangesOverlap(pointer, slotEnd, range.start, range.end))
+      ) {
+        type = 'admin'
+        adminMinutes += blockDuration
+      }
+
+      daySlots.push({ type, start: pointer, end: slotEnd })
+      if (type === 'class') {
+        dayClassSlots.push({
+          start: pointer,
+          end: slotEnd,
+          timeOfDay: determineTimeOfDay(lunchStartMinutes, lunchEndMinutes, pointer, slotEnd)
+        })
+      }
+      pointer = slotEnd
+    }
+
+    perDaySlots.push(daySlots)
+    classSlots.push(dayClassSlots)
+  }
+
+  const maxSlots = Math.max(...perDaySlots.map((slots) => slots.length))
+  perDaySlots.forEach((slots, dayIndex) => {
+    const dayClassSlots = classSlots[dayIndex]
+    if (slots.length < maxSlots) {
+      let pointer = slots[slots.length - 1]?.end ?? dayStartMinutes
+      while (slots.length < maxSlots) {
+        const slotEnd = pointer + blockDuration
+        slots.push({ type: 'class', start: pointer, end: slotEnd })
+        dayClassSlots.push({
+          start: pointer,
+          end: slotEnd,
+          timeOfDay: determineTimeOfDay(lunchStartMinutes, lunchEndMinutes, pointer, slotEnd)
+        })
+        pointer = slotEnd
+      }
+    }
+  })
+
+  const structure: ScheduleStructureRow[] = perDaySlots[0].map((slot) => ({
+    kind: slot.type === 'lunch' ? 'lunch' : 'class',
+    time: minutesToRange(slot.start, slot.end - slot.start)
+  }))
+
+  return { perDaySlots, classSlots, structure, adminMinutes }
+}
+
 function createTeacherCapacities(teachers: TeacherData[], blockDuration: number) {
   const map = new Map<number, TeacherCapacity>()
   teachers.forEach((teacher) => {
+    if (!Array.isArray(teacher.courseIds) || teacher.courseIds.length === 0) {
+      return
+    }
     const weeklyMinutes = Math.max(0, teacher.weeklyHours) * 60
     const capacity = Math.max(0, Math.floor(weeklyMinutes / blockDuration))
     map.set(teacher.id, {
@@ -212,440 +270,410 @@ function createTeacherCapacities(teachers: TeacherData[], blockDuration: number)
   return map
 }
 
-function distributeSessions(
+function pickTeacher(
+  subjectId: number,
+  courseId: number,
+  teacherCapacities: Map<number, TeacherCapacity>
+): TeacherCapacity | null {
+  const candidates = Array.from(teacherCapacities.values()).filter(
+    (entry) => entry.subjectIds.has(subjectId) && entry.courseIds.has(courseId)
+  )
+  if (candidates.length === 0) {
+    return null
+  }
+  candidates.sort((a, b) => b.remainingBlocks - a.remainingBlocks)
+  return candidates.find((candidate) => candidate.remainingBlocks > 0) ?? null
+}
+
+function buildCandidateIndexes(
+  daySlots: ClassSlotMeta[],
+  preferredTime: SubjectData['preferredTime'],
+  isSpecial: boolean
+) {
+  const indexes = daySlots.map((_, index) => index)
+  const sortFn = isSpecial ? (a: number, b: number) => b - a : (a: number, b: number) => a - b
+
+  if (preferredTime === 'any') {
+    return [...indexes].sort(sortFn)
+  }
+
+  const matchTime = preferredTime === 'morning' ? 'morning' : 'afternoon'
+  const matching = indexes.filter((index) => daySlots[index].timeOfDay === matchTime)
+  const remaining = indexes.filter((index) => !matching.includes(index))
+  return [...matching.sort(sortFn), ...remaining.sort(sortFn)]
+}
+
+function violatesConsecutive(
+  assignments: (SlotAssignment | null)[],
+  slotIndex: number,
+  subjectName: string
+) {
+  const prev = assignments[slotIndex - 1]
+  const prevPrev = assignments[slotIndex - 2]
+  return Boolean(prev && prevPrev && prev.subjectName === subjectName && prevPrev.subjectName === subjectName)
+}
+
+function distributeCourse(
   course: CourseData,
-  requirements: SubjectRequirement[],
+  timeline: TimelineData,
+  levelSubjects: SubjectData[],
   teacherCapacities: Map<number, TeacherCapacity>,
-  days: readonly string[],
-  classSlotLimits: number[]
-): CourseAssignments | { error: string } {
+  blockDuration: number,
+  teacherMinutes: Map<number, number>,
+  teacherSubjectMinutes: Map<number, Map<number, number>>,
+  subjectTotals: Map<number, number>
+): { rows: PreviewRow[]; sessions: number; teacherSlots: TeacherSlotRecord[] } | { error: string } {
+  const assignments: (SlotAssignment | null)[][] = timeline.classSlots.map((slots) =>
+    Array.from({ length: slots.length }, () => null)
+  )
+  const subjectDailyCounts = new Map<number, number[]>()
+  let sessions = 0
+
+  const requirements = levelSubjects
+    .map((subject) => ({
+      subject,
+      weeklyBlocks: Math.max(0, Number(subject.weeklyBlocks) || 0)
+    }))
+    .filter((item) => item.weeklyBlocks > 0)
+
   if (requirements.length === 0) {
-    return { error: `El curso ${course.name} no tiene asignaturas configuradas para su ciclo.` }
+    return { error: `El nivel ${course.levelId} no tiene asignaturas configuradas.` }
   }
 
-  const daySessions: SlotCell[][] = days.map(() => [])
-  const normalSubjects = requirements.filter((item) => item.subject.type === 'Normal')
-  const specialSubjects = requirements.filter((item) => item.subject.type === 'Especial')
-
-  const dailyCounts = new Map<number, number[]>()
   for (const requirement of requirements) {
-    dailyCounts.set(requirement.subject.id, Array.from({ length: days.length }, () => 0))
-  }
-
-  let dayPointer = 0
-
-  const assignSubject = (requirement: SubjectRequirement, ensureTailPlacement: boolean) => {
     const { subject, weeklyBlocks } = requirement
-    const maxPerDay = Math.max(1, subject.maxDailyBlocks || 1)
-    const counts = dailyCounts.get(subject.id) ?? Array.from({ length: days.length }, () => 0)
-    dailyCounts.set(subject.id, counts)
+    const maxPerDay = Math.max(1, Number(subject.maxDailyBlocks) || 1)
+    const counts = subjectDailyCounts.get(subject.id) ?? Array.from({ length: WORKING_DAYS.length }, () => 0)
+    subjectDailyCounts.set(subject.id, counts)
 
     let allocated = 0
+    let dayPointer = 0
     let guard = 0
 
-    const pickTeacher = (): TeacherCapacity => {
-      const candidates = Array.from(teacherCapacities.values()).filter((info) => {
-        if (!info.subjectIds.has(subject.id)) {
-          return false
-        }
-        if (info.teacher.levelId !== course.levelId) {
-          return false
-        }
-        if (!info.courseIds.has(course.id)) {
-          return false
-        }
-        return true
-      })
-
-      if (candidates.length === 0) {
-        throw new Error(`No hay profesores que impartan ${subject.name} disponibles para ${course.name}.`)
-      }
-
-      candidates.sort((a, b) => b.remainingBlocks - a.remainingBlocks)
-      const withCapacity = candidates.find((candidate) => candidate.remainingBlocks > 0)
-
-      if (!withCapacity) {
-        const teacherNames = candidates.map((candidate) => candidate.teacher.name).join(', ')
-        throw new Error(
-          `Los profesores ${teacherNames} no tienen horas disponibles para ${subject.name} en ${course.name}. Ajusta la carga semanal.`
-        )
-      }
-
-      return withCapacity
-    }
-
-    while (allocated < weeklyBlocks && guard < 1000) {
-      const dayIndex = dayPointer % days.length
-      const day = daySessions[dayIndex]
-
-      if (day.length >= (classSlotLimits[dayIndex] ?? 0) || counts[dayIndex] >= maxPerDay) {
-        dayPointer++
-        guard++
+    while (allocated < weeklyBlocks && guard < 2000) {
+      const dayIndex = dayPointer % WORKING_DAYS.length
+      const daySlots = timeline.classSlots[dayIndex]
+      if (daySlots.length === 0) {
+        dayPointer += 1
+        guard += 1
         continue
       }
 
-      if (!ensureTailPlacement) {
-        const lastTwo = day.slice(-2)
-        if (lastTwo.length === 2 && lastTwo.every((cell) => cell.subject === subject.name)) {
-          dayPointer++
-          guard++
+      const candidateIndexes = buildCandidateIndexes(
+        daySlots,
+        subject.preferredTime,
+        subject.type === 'Especial'
+      )
+      let placed = false
+
+      for (const slotIndex of candidateIndexes) {
+        if (assignments[dayIndex][slotIndex]) {
           continue
         }
-      } else {
-        const lastEntry = day.length > 0 ? day[day.length - 1] : undefined
-        if (lastEntry?.subject === subject.name) {
-          dayPointer++
-          guard++
+        if (counts[dayIndex] >= maxPerDay) {
           continue
         }
+        if (violatesConsecutive(assignments[dayIndex], slotIndex, subject.name)) {
+          continue
+        }
+
+        const teacherInfo = pickTeacher(subject.id, course.id, teacherCapacities)
+        if (!teacherInfo) {
+          return {
+            error: `No hay disponibilidad de profesores para ${subject.name} en ${course.name}.`
+          }
+        }
+
+        assignments[dayIndex][slotIndex] = {
+          subjectId: subject.id,
+          subjectName: subject.name,
+          color: subject.color,
+          teacherId: teacherInfo.teacher.id,
+          teacherName: teacherInfo.teacher.name
+        }
+        teacherInfo.remainingBlocks = Math.max(0, teacherInfo.remainingBlocks - 1)
+
+        const minutes = blockDuration
+        const totalMinutes = teacherMinutes.get(teacherInfo.teacher.id) ?? 0
+        teacherMinutes.set(teacherInfo.teacher.id, totalMinutes + minutes)
+        const perSubject = teacherSubjectMinutes.get(teacherInfo.teacher.id) ?? new Map<number, number>()
+        perSubject.set(subject.id, (perSubject.get(subject.id) ?? 0) + minutes)
+        teacherSubjectMinutes.set(teacherInfo.teacher.id, perSubject)
+        subjectTotals.set(subject.id, (subjectTotals.get(subject.id) ?? 0) + minutes)
+
+        counts[dayIndex] += 1
+        allocated += 1
+        sessions += 1
+        placed = true
+        break
       }
 
-      const teacherInfo = pickTeacher()
-      day.push({ subject: subject.name, teacher: teacherInfo.teacher.name, color: subject.color })
-      teacherInfo.remainingBlocks = Math.max(0, teacherInfo.remainingBlocks - 1)
-      counts[dayIndex] += 1
-      allocated++
-      dayPointer++
-      guard++
+      if (!placed) {
+        dayPointer += 1
+      }
+      dayPointer += 1
+      guard += 1
     }
 
     if (allocated < weeklyBlocks) {
-      daySessions.forEach((day, dayIndex) => {
-        if (allocated >= weeklyBlocks) {
-          return
-        }
-
-        if (day.length >= (classSlotLimits[dayIndex] ?? 0) || counts[dayIndex] >= maxPerDay) {
-          return
-        }
-
-        while (
-          day.length < (classSlotLimits[dayIndex] ?? 0) &&
-          counts[dayIndex] < maxPerDay &&
-          allocated < weeklyBlocks
-        ) {
-          const teacherInfo = pickTeacher()
-          day.push({ subject: subject.name, teacher: teacherInfo.teacher.name, color: subject.color })
-          teacherInfo.remainingBlocks = Math.max(0, teacherInfo.remainingBlocks - 1)
-          counts[dayIndex] += 1
-          allocated++
-        }
-      })
-    }
-
-    if (allocated < weeklyBlocks) {
-      throw new Error(`No hay bloques suficientes para asignar ${subject.name} en ${course.name}.`)
+      return {
+        error: `No fue posible asignar todos los bloques de ${subject.name} para ${course.name}. Ajusta la carga horaria o los profesores disponibles.`
+      }
     }
   }
 
-  try {
-    for (const requirement of normalSubjects) {
-      assignSubject(requirement, false)
-    }
+  const lunchCell: PreviewCell = { subject: LUNCH_LABEL, color: '#f97316', type: 'lunch' }
+  const adminCell: PreviewCell = { subject: ADMIN_LABEL, color: '#94a3b8', type: 'admin' }
+  const freeCell: PreviewCell = { subject: 'Sin clase', color: '#e2e8f0', type: 'free' }
+  const classPointers = timeline.classSlots.map(() => 0)
+  const teacherSlots: TeacherSlotRecord[] = []
 
-    dayPointer = 0
-    for (const requirement of specialSubjects) {
-      assignSubject(requirement, true)
-    }
-  } catch (error) {
-    return {
-      error:
-        error instanceof Error
-          ? error.message
-          : `No fue posible distribuir todos los bloques para ${course.name}. Ajusta los ciclos o la carga horaria.`
-    }
-  }
-
-  const hasSessions = daySessions.some((sessions) => sessions.length > 0)
-  if (!hasSessions) {
-    return { error: `El curso ${course.name} no tiene bloques planificados.` }
-  }
-
-  return { course, daySessions }
-}
-
-function buildScheduleStructure(classRowCount: number, config: ConfigResponse): ScheduleStructureRow[] {
-  const blockDuration = config.blockDuration ?? 45
-  const dayStart = config.dayStart ?? '08:00'
-  const lunchStart = config.lunchStart
-  const lunchDuration = Math.max(0, config.lunchDuration ?? 0)
-
-  if (classRowCount === 0) {
-    if (lunchStart && lunchDuration > 0) {
-      const startMinutes = timeToMinutes(lunchStart)
-      return [
-        {
-          kind: 'lunch',
-          time: minutesToRange(startMinutes, lunchDuration)
-        }
-      ]
-    }
-    return []
-  }
-
-  const dayStartMinutes = timeToMinutes(dayStart)
-  const lunchStartMinutes = lunchStart ? timeToMinutes(lunchStart) : null
-  const lunchIndex =
-    lunchStartMinutes !== null && lunchDuration > 0
-      ? Math.max(0, Math.floor((lunchStartMinutes - dayStartMinutes) / blockDuration))
-      : null
-
-  const rows: ScheduleStructureRow[] = []
-  let currentMinutes = dayStartMinutes
-  let lunchInserted = false
-
-  for (let classIndex = 0; classIndex < classRowCount; classIndex++) {
-    if (!lunchInserted && lunchIndex !== null && classIndex === lunchIndex) {
-      const lunchStartTime = lunchStartMinutes !== null ? Math.max(currentMinutes, lunchStartMinutes) : currentMinutes
-      rows.push({ kind: 'lunch', time: minutesToRange(lunchStartTime, lunchDuration) })
-      currentMinutes = lunchStartTime + lunchDuration
-      lunchInserted = true
-    }
-
-    const start = currentMinutes
-    const end = start + blockDuration
-    rows.push({ kind: 'class', time: minutesToRange(start, blockDuration), classRowIndex: classIndex })
-    currentMinutes = end
-  }
-
-  if (!lunchInserted && lunchIndex !== null) {
-    const lunchStartTime = lunchStartMinutes !== null ? lunchStartMinutes : currentMinutes
-    rows.push({ kind: 'lunch', time: minutesToRange(lunchStartTime, lunchDuration) })
-  }
-
-  return rows
-}
-
-export function syncPreview(preview: SchedulePreview): SchedulePreview {
-  const { courses, days } = preview
-
-  if (courses.length === 0) {
-    return {
-      ...preview,
-      teachers: [],
-      summary: { totalCourses: 0, totalTeachers: 0, totalSessions: 0 }
-    }
-  }
-
-  const referenceRows = courses[0].rows
-  const rowCount = referenceRows.length
-  const lunchRowIndexes = new Set<number>()
-  referenceRows.forEach((row, index) => {
+  const rows: PreviewRow[] = timeline.structure.map((row, rowIndex) => {
     if (row.kind === 'lunch') {
-      lunchRowIndexes.add(index)
-    }
-  })
-
-  const lunchCell: PreviewCell = { subject: LUNCH_LABEL, color: '#f97316' }
-  const teacherMap = new Map<string, (PreviewCell | null)[][]>()
-
-  for (const table of courses) {
-    table.rows.forEach((row, rowIndex) => {
-      if (row.kind !== 'class') {
-        return
+      return {
+        time: row.time,
+        kind: 'lunch',
+        cells: WORKING_DAYS.map(() => lunchCell)
       }
+    }
 
-      row.cells.forEach((cell, dayIndex) => {
-        if (
-          !cell ||
-          cell.type === 'admin' ||
-          cell.subject === LUNCH_LABEL ||
-          !cell.teacher ||
-          cell.teacher === 'Sin profesor asignado'
-        ) {
-          return
+    return {
+      time: row.time,
+      kind: 'class',
+      cells: WORKING_DAYS.map((_, dayIndex) => {
+        const slot = timeline.perDaySlots[dayIndex][rowIndex]
+        if (!slot) {
+          return freeCell
+        }
+        if (slot.type === 'admin') {
+          return adminCell
+        }
+        if (slot.type === 'lunch') {
+          return lunchCell
         }
 
-        if (!teacherMap.has(cell.teacher)) {
-          teacherMap.set(
-            cell.teacher,
-            Array.from({ length: rowCount }, () => Array.from({ length: days.length }, () => null))
-          )
+        const pointer = classPointers[dayIndex]
+        const assignment = assignments[dayIndex][pointer] ?? null
+        classPointers[dayIndex] = pointer + 1
+
+        if (!assignment) {
+          return freeCell
         }
 
-        const teacherGrid = teacherMap.get(cell.teacher)!
-        teacherGrid[rowIndex][dayIndex] = {
-          subject: cell.subject,
-          course: table.name,
-          color: cell.color
+        teacherSlots.push({
+          teacherId: assignment.teacherId,
+          teacherName: assignment.teacherName,
+          rowIndex,
+          dayIndex,
+          subject: assignment.subjectName,
+          color: assignment.color,
+          course: course.name
+        })
+
+        return {
+          subject: assignment.subjectName,
+          teacher: assignment.teacherName,
+          color: assignment.color,
+          type: 'class'
         }
       })
-    })
-  }
-
-  teacherMap.forEach((grid) => {
-    lunchRowIndexes.forEach((rowIndex) => {
-      grid[rowIndex] = Array.from({ length: days.length }, () => lunchCell)
-    })
+    }
   })
 
-  const teacherTables: PreviewTable[] = Array.from(teacherMap.entries()).map(([teacher, grid]) => ({
-    id: teacher,
-    name: teacher,
-    rows: referenceRows.map((row, rowIndex) => ({
-      time: row.time,
-      kind: row.kind,
-      cells:
-        row.kind === 'lunch'
-          ? Array.from({ length: days.length }, () => lunchCell)
-          : grid[rowIndex]
-    }))
-  }))
-
-  const totalSessions = courses.reduce((acc, table) => {
-    return (
-      acc +
-      table.rows.reduce((sum, row) => {
-        if (row.kind !== 'class') {
-          return sum
-        }
-        return (
-          sum +
-          row.cells.filter((cell) => cell && cell.type !== 'admin' && cell.subject !== LUNCH_LABEL).length
-        )
-      }, 0)
-    )
-  }, 0)
-
-  return {
-    ...preview,
-    teachers: teacherTables,
-    summary: {
-      totalCourses: courses.length,
-      totalTeachers: teacherTables.length,
-      totalSessions
-    }
-  }
+  return { rows, sessions, teacherSlots }
 }
 
-export function buildSchedulePreview(input: BuildPreviewInput): { preview?: SchedulePreview; error?: string } {
-  const { courses, subjects, teachers, mode, courseId, config } = input
+function generateTagColor(index: number): string {
+  const hue = (index * 67) % 360
+  return `hsl(${hue} 70% 45%)`
+}
 
-  if (courses.length === 0) {
-    return { error: 'No hay cursos disponibles para generar una previsualización.' }
+export function buildSchedulePreview(
+  input: BuildPreviewInput
+): { preview?: SchedulePreview; error?: string } {
+  const { levelId, courses, subjects, teachers, config } = input
+  if (!levelId) {
+    return { error: 'Selecciona un nivel para generar la previsualización.' }
   }
 
-  if (subjects.length === 0) {
-    return { error: 'No existen asignaturas registradas. Agrega al menos una para continuar.' }
+  const levelName = FIXED_LEVELS.find((level) => level.id === levelId)?.name ?? levelId
+  const levelCourses = courses.filter((course) => course.levelId === levelId)
+  if (levelCourses.length === 0) {
+    return { error: 'No existen cursos registrados para el nivel seleccionado.' }
   }
 
-  if (teachers.length === 0) {
-    return { error: 'No hay profesores registrados para asignar a las clases.' }
+  const levelSubjects = subjects.filter((subject) => subject.levelId === levelId)
+  if (levelSubjects.length === 0) {
+    return { error: 'Agrega asignaturas al nivel antes de generar horarios.' }
   }
 
-  const workingCourses =
-    mode === 'course'
-      ? (() => {
-          const match = courses.find((course) => course.id === courseId)
-          return match ? [match] : []
-        })()
-      : courses
-
-  if (workingCourses.length === 0) {
-    return { error: 'No se encontró el curso solicitado para la previsualización.' }
+  const levelTeachers = teachers.filter((teacher) => teacher.levelId === levelId)
+  if (levelTeachers.length === 0) {
+    return { error: 'Registra profesores asociados al nivel seleccionado.' }
   }
 
-  const blockDuration = config.blockDuration ?? 45
+  const blockDuration = Math.max(30, config.blockDuration ?? 45)
   const dayStart = config.dayStart ?? '08:00'
   const lunchStart = config.lunchStart ?? '13:00'
   const lunchDuration = Math.max(0, config.lunchDuration ?? 60)
+  const schoolName = config.schoolName ?? 'School Scheduler'
 
+  const teacherCapacities = createTeacherCapacities(levelTeachers, blockDuration)
+  if (teacherCapacities.size === 0) {
+    return { error: 'Asigna cursos a los profesores para continuar con la generación.' }
+  }
+
+  const teacherMinutes = new Map<number, number>()
+  const teacherSubjectMinutes = new Map<number, Map<number, number>>()
+  const subjectTotals = new Map<number, number>()
+  const teacherSlotRecords: TeacherSlotRecord[] = []
+  let referenceTimeline: TimelineData | null = null
   const courseTables: PreviewTable[] = []
-  const teacherCapacities = createTeacherCapacities(teachers, blockDuration)
+  let totalSessions = 0
 
-  for (const course of workingCourses) {
+  for (const course of levelCourses) {
     const timeline = buildTimeline(course, config)
-    const totalCapacity = timeline.classSlotLimits.reduce((acc, limit) => acc + limit, 0)
-
-    const requirements: SubjectRequirement[] = subjects
-      .filter((subject) => subject.levelId === course.levelId)
-      .map((subject) => ({
-        subject,
-        weeklyBlocks: Math.max(0, Number(subject.weeklyBlocks) || 0)
-      }))
-      .filter((requirement) => requirement.weeklyBlocks > 0)
-
-    const totalRequiredBlocks = requirements.reduce((acc, requirement) => acc + requirement.weeklyBlocks, 0)
-
-    if (totalRequiredBlocks > totalCapacity) {
-      return {
-        error: `La jornada configurada para ${course.name} solo permite ${totalCapacity} bloques semanales, pero se requieren ${totalRequiredBlocks}. Ajusta las horas administrativas o la carga de asignaturas.`
-      }
+    if (!referenceTimeline) {
+      referenceTimeline = timeline
     }
 
-    const assignments = distributeSessions(
+    const result = distributeCourse(
       course,
-      requirements,
+      timeline,
+      levelSubjects,
       teacherCapacities,
-      WORKING_DAYS,
-      timeline.classSlotLimits
+      blockDuration,
+      teacherMinutes,
+      teacherSubjectMinutes,
+      subjectTotals
     )
-    if ('error' in assignments) {
-      return { error: assignments.error }
+
+    if ('error' in result) {
+      return { error: result.error }
     }
 
-    const lunchCell: PreviewCell = { subject: LUNCH_LABEL, color: '#f97316' }
-    const adminCell: PreviewCell = { subject: ADMIN_LABEL, color: '#94a3b8', type: 'admin' }
-    const dayClassPointers = WORKING_DAYS.map(() => 0)
+    courseTables.push({ id: course.id, name: course.name, rows: result.rows })
+    teacherSlotRecords.push(...result.teacherSlots)
+    totalSessions += result.sessions
+  }
 
-    const rows: PreviewRow[] = timeline.structure.map((row, rowIndex) => {
+  if (!referenceTimeline) {
+    return { error: 'No fue posible construir la jornada para el nivel seleccionado.' }
+  }
+
+  const teacherSlotsById = new Map<number, TeacherSlotRecord[]>()
+  levelTeachers.forEach((teacher) => {
+    teacherSlotsById.set(teacher.id, [])
+  })
+  teacherSlotRecords.forEach((record) => {
+    const list = teacherSlotsById.get(record.teacherId) ?? []
+    list.push(record)
+    teacherSlotsById.set(record.teacherId, list)
+  })
+
+  const teacherTables: PreviewTable[] = levelTeachers.map((teacher) => {
+    const records = teacherSlotsById.get(teacher.id) ?? []
+    const grid: PreviewCell[][] = referenceTimeline!.structure.map((row, rowIndex): PreviewCell[] => {
       if (row.kind === 'lunch') {
-        return {
-          time: row.time,
-          kind: 'lunch',
-          cells: WORKING_DAYS.map((_, dayIndex) => {
-            const slot = timeline.perDaySlots[dayIndex][rowIndex]
-            return slot.type === 'lunch' ? lunchCell : null
-          })
-        }
+        return Array.from({ length: WORKING_DAYS.length }, () => ({
+          subject: LUNCH_LABEL,
+          color: '#f97316',
+          type: 'lunch' as const
+        }))
       }
+      return referenceTimeline!.perDaySlots.map((daySlots, dayIndex) => {
+        const slot = daySlots[rowIndex]
+        if (!slot || slot.type === 'admin') {
+          return {
+            subject: ADMIN_LABEL,
+            color: '#94a3b8',
+            type: 'admin' as const
+          }
+        }
+        return {
+          subject: 'Sin clase',
+          color: '#e2e8f0',
+          type: 'free' as const
+        }
+      })
+    })
+
+      records.forEach((record) => {
+        const row = grid[record.rowIndex]
+        if (!row) {
+          return
+        }
+        row[record.dayIndex] = {
+          subject: record.subject,
+          course: record.course,
+          color: record.color,
+          type: 'class'
+        }
+      })
 
       return {
-        time: row.time,
-        kind: 'class',
-        cells: WORKING_DAYS.map((_, dayIndex) => {
-          const slot = timeline.perDaySlots[dayIndex][rowIndex]
-          if (slot.type === 'admin') {
-            return adminCell
-          }
-          if (slot.type === 'lunch') {
-            return lunchCell
-          }
-
-          const classIndex = dayClassPointers[dayIndex]
-          dayClassPointers[dayIndex] = classIndex + 1
-          const assignment = assignments.daySessions[dayIndex][classIndex]
-          return assignment
-            ? { subject: assignment.subject, teacher: assignment.teacher, color: assignment.color, type: 'class' }
-            : null
-        })
+        id: teacher.id,
+        name: teacher.name,
+        rows: referenceTimeline!.structure.map((row, rowIndex) => ({
+          time: row.time,
+          kind: row.kind,
+          cells: grid[rowIndex]
+        }))
       }
-    })
+  })
 
-    courseTables.push({
-      id: course.id,
-      name: course.name,
-      rows
+  const administrativeMinutes = referenceTimeline.adminMinutes
+  const teacherSummaries: TeacherSummary[] = levelTeachers.map((teacher, index) => {
+    const classMinutes = teacherMinutes.get(teacher.id) ?? 0
+    const perSubject = teacherSubjectMinutes.get(teacher.id) ?? new Map<number, number>()
+    const subjectEntries = Array.from(perSubject.entries()).map(([subjectId, minutes]) => {
+      const subjectName = levelSubjects.find((subject) => subject.id === subjectId)?.name ?? 'Asignatura'
+      return { subject: subjectName, minutes }
     })
-  }
+    return {
+      teacherId: teacher.id,
+      teacherName: teacher.name,
+      classMinutes,
+      administrativeMinutes,
+      subjectMinutes: subjectEntries
+    }
+  })
 
-  const basePreview: SchedulePreview = {
-    days: WORKING_DAYS,
-    courses: courseTables,
-    teachers: [],
-    summary: {
-      totalCourses: courseTables.length,
-      totalTeachers: 0,
-      totalSessions: 0
-    },
-    config: {
-      blockDuration,
-      dayStart,
-      lunchStart,
-      lunchDuration
+  const subjectTotalsList: SubjectTotal[] = Array.from(subjectTotals.entries()).map(
+    ([subjectId, minutes]) => {
+      const subjectName = levelSubjects.find((subject) => subject.id === subjectId)?.name ?? 'Asignatura'
+      return { subjectId, subjectName, minutes }
+    }
+  )
+
+  const teacherTags: TeacherTag[] = teacherSummaries.map((summary, index) => ({
+    teacherId: summary.teacherId,
+    teacherName: summary.teacherName,
+    color: generateTagColor(index)
+  }))
+
+  return {
+    preview: {
+      days: WORKING_DAYS,
+      courses: courseTables,
+      teachers: teacherTables,
+      summary: {
+        totalCourses: courseTables.length,
+        totalTeachers: teacherTables.length,
+        totalSessions
+      },
+      teacherSummaries,
+      subjectTotals: subjectTotalsList,
+      teacherTags,
+      schoolName,
+      levelId,
+      levelName,
+      config: {
+        blockDuration,
+        dayStart,
+        lunchStart,
+        lunchDuration
+      }
     }
   }
-
-  return { preview: syncPreview(basePreview) }
 }
-

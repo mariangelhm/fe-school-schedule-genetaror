@@ -1,9 +1,12 @@
+// Vista dedicada a mantener las asignaturas: garantiza unicidad por nivel y
+// permite configurar cargas semanales, horarios preferentes y tipo.
 import { FormEvent, useMemo, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import {
   useSchedulerDataStore,
   type SubjectData,
   type SubjectType,
+  type SubjectPreferredTime,
   FIXED_LEVELS,
   DEFAULT_LEVEL_ID
 } from '../../store/useSchedulerData'
@@ -15,6 +18,7 @@ interface SubjectDraft {
   color: string
   weeklyBlocks: number
   maxDailyBlocks: number
+  preferredTime: SubjectPreferredTime
 }
 
 function createEmptyDraft(levelId: string): SubjectDraft {
@@ -24,7 +28,8 @@ function createEmptyDraft(levelId: string): SubjectDraft {
     type: 'Normal',
     color: '#2563eb',
     weeklyBlocks: 4,
-    maxDailyBlocks: 2
+    maxDailyBlocks: 2,
+    preferredTime: 'any'
   }
 }
 
@@ -59,7 +64,8 @@ export function SubjectsPage() {
       type: draft.type,
       color: draft.color,
       weeklyBlocks: Math.max(1, Number(draft.weeklyBlocks) || 1),
-      maxDailyBlocks: Math.max(1, Number(draft.maxDailyBlocks) || 1)
+      maxDailyBlocks: Math.max(1, Number(draft.maxDailyBlocks) || 1),
+      preferredTime: draft.preferredTime
     }
 
     const success = editingId ? updateSubject(editingId, payload) : addSubject(payload)
@@ -81,7 +87,8 @@ export function SubjectsPage() {
       type: subject.type,
       color: subject.color,
       weeklyBlocks: subject.weeklyBlocks,
-      maxDailyBlocks: subject.maxDailyBlocks
+      maxDailyBlocks: subject.maxDailyBlocks,
+      preferredTime: subject.preferredTime
     })
     setError(null)
   }
@@ -114,6 +121,7 @@ export function SubjectsPage() {
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Bloques semanales</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Máx. diarios</th>
                 <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Tipo</th>
+                <th className="px-4 py-3 font-medium text-slate-600 dark:text-slate-300">Preferencia</th>
                 <th className="px-4 py-3" />
               </tr>
             </thead>
@@ -132,6 +140,13 @@ export function SubjectsPage() {
                     <td className="px-4 py-3">{subject.weeklyBlocks}</td>
                     <td className="px-4 py-3">{subject.maxDailyBlocks}</td>
                     <td className="px-4 py-3">{subject.type}</td>
+                    <td className="px-4 py-3">
+                      {subject.preferredTime === 'morning'
+                        ? 'Mañana'
+                        : subject.preferredTime === 'afternoon'
+                        ? 'Tarde'
+                        : 'Indistinto'}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-3">
                         <button
@@ -155,7 +170,7 @@ export function SubjectsPage() {
               })}
               {subjects.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay asignaturas registradas.
                   </td>
                 </tr>
@@ -209,6 +224,23 @@ export function SubjectsPage() {
             >
               <option value="Normal">Normal</option>
               <option value="Especial">Especial</option>
+            </select>
+          </label>
+          <label className="grid gap-2 text-sm">
+            <span className="font-medium text-slate-600 dark:text-slate-300">Horario de preferencia</span>
+            <select
+              value={draft.preferredTime}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  preferredTime: event.target.value as SubjectPreferredTime
+                }))
+              }
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+            >
+              <option value="any">Indistinto</option>
+              <option value="morning">Mañana</option>
+              <option value="afternoon">Tarde</option>
             </select>
           </label>
           <label className="grid gap-2 text-sm">
