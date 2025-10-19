@@ -677,3 +677,8 @@ export function buildSchedulePreview(
     }
   }
 }
+
+// Alias conservado para instalaciones que aún importan la función antigua
+// `syncPreview`. Mantiene exactamente el mismo comportamiento al delegar en
+// `buildSchedulePreview`.
+export const syncPreview = buildSchedulePreview
