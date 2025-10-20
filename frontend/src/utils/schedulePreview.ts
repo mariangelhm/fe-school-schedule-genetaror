@@ -463,9 +463,7 @@ function distributeCourse(
           teacherAssignments
         )
         if (!teacherInfo) {
-          return {
-            error: `No hay disponibilidad de profesores para ${subject.name} en ${course.name}.`
-          }
+          continue
         }
 
         assignments[dayIndex][slotIndex] = {
