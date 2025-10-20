@@ -20,7 +20,7 @@ export interface PreviewCell {
 
 export interface PreviewRow {
   time: string
-  kind: 'class' | 'lunch'
+  kind: 'class' | 'lunch' | 'break'
   cells: (PreviewCell | null)[]
 }
 
@@ -131,6 +131,8 @@ interface TeacherSlotRecord {
   course: string
 }
 
+type TeacherAssignmentMatrix = Map<number, Map<number, Set<number>>>
+
 function timeToMinutes(time: string): number {
   const [hour = '0', minute = '0'] = time.split(':')
   return Number(hour) * 60 + Number(minute)
@@ -181,9 +183,15 @@ function buildTimeline(course: CourseData, config: ConfigResponse): TimelineData
   const dayEndMinutes = levelSchedule?.endTime
     ? timeToMinutes(levelSchedule.endTime)
     : dayStartMinutes + blockDuration * 8 + lunchDuration
-  const breakDurations = (levelSchedule?.breakDurations ?? [])
-    .map((duration) => Math.max(0, Math.round(Number(duration) || 0)))
-    .filter((duration) => duration > 0)
+  const breakEntries =
+    levelSchedule?.breakMode === 'custom'
+      ? (levelSchedule.breaks ?? [])
+          .map((entry) => ({
+            start: timeToMinutes(entry.start ?? '10:00'),
+            duration: Math.max(0, Math.round(Number(entry.duration) || 0))
+          }))
+          .filter((entry) => entry.duration > 0)
+      : []
 
   const perDaySlots: DaySlot[][] = []
   const classSlots: ClassSlotMeta[][] = []
@@ -198,55 +206,67 @@ function buildTimeline(course: CourseData, config: ConfigResponse): TimelineData
       .map((block) => ({ start: timeToMinutes(block.start), end: timeToMinutes(block.end) }))
       .filter((range) => range.end > range.start)
 
+    const breakRanges = breakEntries
+      .map((entry) => ({
+        type: 'break' as const,
+        start: entry.start,
+        end: entry.start + entry.duration
+      }))
+      .filter((range) => range.end > range.start && range.start >= dayStartMinutes && range.end <= dayEndMinutes + 1)
+
+    const specialRanges = [
+      ...administrativeRanges.map((range) => ({ type: 'admin' as const, ...range })),
+      ...(lunchStartMinutes !== null && lunchDuration > 0
+        ? [
+            {
+              type: 'lunch' as const,
+              start: lunchStartMinutes,
+              end: lunchEndMinutes ?? lunchStartMinutes
+            }
+          ]
+        : []),
+      ...breakRanges
+    ].sort((a, b) => a.start - b.start)
+
     const daySlots: DaySlot[] = []
     const dayClassSlots: ClassSlotMeta[] = []
     let pointer = dayStartMinutes
-    let breakIndex = 0
 
-    while (pointer + blockDuration <= dayEndMinutes + 1) {
-      const slotEnd = pointer + blockDuration
-      let type: DaySlot['type'] = 'class'
-      if (
-        lunchStartMinutes !== null &&
-        lunchDuration > 0 &&
-        rangesOverlap(pointer, slotEnd, lunchStartMinutes, lunchEndMinutes ?? lunchStartMinutes)
-      ) {
-        type = 'lunch'
-      } else if (
-        administrativeRanges.some((range) => rangesOverlap(pointer, slotEnd, range.start, range.end))
-      ) {
-        type = 'admin'
-        adminMinutes += blockDuration
-      }
+    while (pointer < dayEndMinutes + 1) {
+      const activeSpecial = specialRanges.find(
+        (range) => pointer >= range.start && pointer < range.end
+      )
 
-      daySlots.push({ type, start: pointer, end: slotEnd })
-      if (type === 'class') {
-        dayClassSlots.push({
-          start: pointer,
-          end: slotEnd,
-          timeOfDay: determineTimeOfDay(lunchStartMinutes, lunchEndMinutes, pointer, slotEnd)
-        })
-      }
-      let nextPointer = slotEnd
-      if (type === 'class' && breakDurations.length > 0) {
-        const breakDuration = breakDurations[breakIndex % breakDurations.length]
-        const breakStart = slotEnd
-        const breakEnd = breakStart + breakDuration
-        const overlapsLunch =
-          lunchStartMinutes !== null &&
-          lunchDuration > 0 &&
-          rangesOverlap(breakStart, breakEnd, lunchStartMinutes, lunchEndMinutes ?? lunchStartMinutes)
-        const overlapsAdmin = administrativeRanges.some((range) =>
-          rangesOverlap(breakStart, breakEnd, range.start, range.end)
-        )
-        if (!overlapsLunch && !overlapsAdmin && breakEnd <= dayEndMinutes + 1) {
-          daySlots.push({ type: 'break', start: breakStart, end: breakEnd })
-          breakMinutes += breakDuration
-          breakIndex += 1
-          nextPointer = breakEnd
+      if (activeSpecial) {
+        daySlots.push({ type: activeSpecial.type, start: activeSpecial.start, end: activeSpecial.end })
+        if (activeSpecial.type === 'admin') {
+          adminMinutes += activeSpecial.end - activeSpecial.start
         }
+        if (activeSpecial.type === 'break') {
+          breakMinutes += activeSpecial.end - activeSpecial.start
+        }
+        pointer = activeSpecial.end
+        continue
       }
-      pointer = nextPointer
+
+      const blockEnd = pointer + blockDuration
+      if (blockEnd > dayEndMinutes + 1) {
+        break
+      }
+
+      const nextSpecial = specialRanges.find((range) => range.start > pointer)
+      if (nextSpecial && blockEnd > nextSpecial.start) {
+        pointer = nextSpecial.start
+        continue
+      }
+
+      daySlots.push({ type: 'class', start: pointer, end: blockEnd })
+      dayClassSlots.push({
+        start: pointer,
+        end: blockEnd,
+        timeOfDay: determineTimeOfDay(lunchStartMinutes, lunchEndMinutes, pointer, blockEnd)
+      })
+      pointer = blockEnd
     }
 
     perDaySlots.push(daySlots)
@@ -300,7 +320,10 @@ function createTeacherCapacities(teachers: TeacherData[], blockDuration: number)
 function pickTeacher(
   subjectId: number,
   courseId: number,
-  teacherCapacities: Map<number, TeacherCapacity>
+  teacherCapacities: Map<number, TeacherCapacity>,
+  dayIndex: number,
+  slotStart: number,
+  teacherAssignments: TeacherAssignmentMatrix
 ): TeacherCapacity | null {
   const candidates = Array.from(teacherCapacities.values()).filter(
     (entry) => entry.subjectIds.has(subjectId) && entry.courseIds.has(courseId)
@@ -309,7 +332,18 @@ function pickTeacher(
     return null
   }
   candidates.sort((a, b) => b.remainingBlocks - a.remainingBlocks)
-  return candidates.find((candidate) => candidate.remainingBlocks > 0) ?? null
+  for (const candidate of candidates) {
+    if (candidate.remainingBlocks <= 0) {
+      continue
+    }
+    const dayMap = teacherAssignments.get(candidate.teacher.id)
+    const daySet = dayMap?.get(dayIndex)
+    if (daySet && daySet.has(slotStart)) {
+      continue
+    }
+    return candidate
+  }
+  return null
 }
 
 function buildCandidateIndexes(
@@ -348,7 +382,8 @@ function distributeCourse(
   blockDuration: number,
   teacherMinutes: Map<number, number>,
   teacherSubjectMinutes: Map<number, Map<number, number>>,
-  subjectTotals: Map<number, number>
+  subjectTotals: Map<number, number>,
+  teacherAssignments: TeacherAssignmentMatrix
 ): { rows: PreviewRow[]; sessions: number; teacherSlots: TeacherSlotRecord[] } | { error: string } {
   const assignments: (SlotAssignment | null)[][] = timeline.classSlots.map((slots) =>
     Array.from({ length: slots.length }, () => null)
@@ -367,11 +402,25 @@ function distributeCourse(
     return { error: `El nivel ${course.levelId} no tiene asignaturas configuradas.` }
   }
 
+  const totalRequiredBlocks = requirements.reduce((sum, item) => sum + item.weeklyBlocks, 0)
+  const availableClassBlocks = timeline.classSlots.reduce((sum, slots) => sum + slots.length, 0)
+  if (totalRequiredBlocks > availableClassBlocks) {
+    return {
+      error: `La carga semanal total excede los bloques disponibles para ${course.name}. Ajusta los horarios o la duración de la jornada.`
+    }
+  }
+
   for (const requirement of requirements) {
     const { subject, weeklyBlocks } = requirement
     const maxPerDay = Math.max(1, Number(subject.maxDailyBlocks) || 1)
     const counts = subjectDailyCounts.get(subject.id) ?? Array.from({ length: WORKING_DAYS.length }, () => 0)
     subjectDailyCounts.set(subject.id, counts)
+
+    if (maxPerDay * WORKING_DAYS.length < weeklyBlocks) {
+      return {
+        error: `Los bloques diarios máximos de ${subject.name} impiden cumplir su carga semanal en ${course.name}. Ajusta la configuración antes de generar.`
+      }
+    }
 
     let allocated = 0
     let dayPointer = 0
@@ -404,7 +453,15 @@ function distributeCourse(
           continue
         }
 
-        const teacherInfo = pickTeacher(subject.id, course.id, teacherCapacities)
+        const slotMeta = daySlots[slotIndex]
+        const teacherInfo = pickTeacher(
+          subject.id,
+          course.id,
+          teacherCapacities,
+          dayIndex,
+          slotMeta.start,
+          teacherAssignments
+        )
         if (!teacherInfo) {
           return {
             error: `No hay disponibilidad de profesores para ${subject.name} en ${course.name}.`
@@ -419,6 +476,12 @@ function distributeCourse(
           teacherName: teacherInfo.teacher.name
         }
         teacherInfo.remainingBlocks = Math.max(0, teacherInfo.remainingBlocks - 1)
+
+        const dayMap = teacherAssignments.get(teacherInfo.teacher.id) ?? new Map<number, Set<number>>()
+        const daySet = dayMap.get(dayIndex) ?? new Set<number>()
+        daySet.add(slotMeta.start)
+        dayMap.set(dayIndex, daySet)
+        teacherAssignments.set(teacherInfo.teacher.id, dayMap)
 
         const minutes = blockDuration
         const totalMinutes = teacherMinutes.get(teacherInfo.teacher.id) ?? 0
@@ -564,6 +627,7 @@ export function buildSchedulePreview(
   const teacherMinutes = new Map<number, number>()
   const teacherSubjectMinutes = new Map<number, Map<number, number>>()
   const subjectTotals = new Map<number, number>()
+  const teacherAssignments: TeacherAssignmentMatrix = new Map()
   const teacherSlotRecords: TeacherSlotRecord[] = []
   let referenceTimeline: TimelineData | null = null
   const courseTables: PreviewTable[] = []
@@ -583,7 +647,8 @@ export function buildSchedulePreview(
       blockDuration,
       teacherMinutes,
       teacherSubjectMinutes,
-      subjectTotals
+      subjectTotals,
+      teacherAssignments
     )
 
     if ('error' in result) {

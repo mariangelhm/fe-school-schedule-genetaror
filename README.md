@@ -12,7 +12,7 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 - Gestión completa de aulas, cursos, asignaturas y profesores desde el Dashboard con accesos rápidos y tablas actualizadas en vivo.
 - Previsualización de horarios por nivel con pestañas de cursos/profesores, filtros, etiquetas de docentes y exportación profesional a PDF por curso/profesor en orientación horizontal.
 - Distribución automática que respeta preferencia horaria de asignaturas, bloques administrativos y bloque de almuerzo visible en la grilla.
-- Configuración visualmente diferenciada por nivel (Parvulario, Básico y Media) con recreos por nivel, validación de horas administrativas (incluye opción "No aplica") y control del nombre del colegio mostrado en los horarios.
+- Configuración visualmente diferenciada por nivel (Parvulario, Básico y Media) con recreos configurables (hora de inicio y duración, o "No aplica"), validación de horas administrativas (incluye opción "No aplica") y control del nombre del colegio mostrado en los horarios.
 - Configuraciones de niveles y cargas horarias totalmente desconectadas de feriados/eventos (el mantenedor se concentra en académica pura).
 - Ruteo con `react-router-dom` y componentes reutilizables para paneles, mantenedores y vistas de calendario.
 - Integración prevista con un gateway/API externa protegida con JWT.
@@ -20,7 +20,7 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 ## Configuración dinámica desde el front
 
 - **Niveles predefinidos:** las pantallas de asignaturas, cursos, profesores y aulas utilizan siempre los niveles "Parvulario", "Básico" y "Media". En la configuración se distinguen con colores y cada uno define su hora de término diaria.
-- **Recreos por nivel:** añade uno o más recreos (en minutos) entre bloques. El generador los respeta en la distribución semanal y se muestran como filas amarillas en las previsualizaciones/exportaciones.
+- **Recreos por nivel:** define para cada nivel los recreos indicando hora de inicio y duración (en minutos) o marca "No aplica". El generador inserta esos bloques entre clases y los oculta cuando no corresponden.
 - **Horas administrativas:** marca "No aplica" o define bloques administrativos por día. Se valida que no se crucen con el almuerzo y es obligatorio seleccionar una de las dos opciones para poder generar horarios.
 - **Bloque de almuerzo:** especifica inicio y duración del almuerzo; aparece resaltado en las tablas y se excluye de la carga académica.
 - **Contrato tiempo completo:** configura cuántas horas semanales representa un contrato full-time y se asignan automáticamente a los profesores con ese tipo de contrato.

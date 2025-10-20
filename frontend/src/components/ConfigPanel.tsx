@@ -8,6 +8,8 @@ import {
   updateConfig,
   type AdministrativeBlock,
   type AdministrativeMode,
+  type BreakConfig,
+  type BreakMode,
   type LevelScheduleConfig
 } from '../services/configService'
 import { FIXED_LEVELS } from '../store/useSchedulerData'
@@ -17,16 +19,35 @@ interface AdministrativeBlockForm extends AdministrativeBlock {
   id: string
 }
 
+interface BreakForm extends BreakConfig {
+  id: string
+}
+
 interface LevelScheduleForm extends LevelScheduleConfig {
   administrativeBlocks: AdministrativeBlockForm[]
+  breaks: BreakForm[]
 }
 
 // Paleta utilizada para diferenciar visualmente la tarjeta de cada nivel.
 const LEVEL_BADGES: Record<string, string> = {
   parvulario:
-    'border-l-4 border-amber-400 bg-amber-50/60 dark:border-amber-400/80 dark:bg-amber-400/10',
-  basico: 'border-l-4 border-sky-500 bg-sky-50/60 dark:border-sky-400/80 dark:bg-sky-400/10',
-  media: 'border-l-4 border-violet-500 bg-violet-50/60 dark:border-violet-400/80 dark:bg-violet-400/10'
+    'border-l-4 border-amber-500 bg-amber-100/80 dark:border-amber-300 dark:bg-amber-500/15',
+  basico:
+    'border-l-4 border-sky-600 bg-sky-100/80 dark:border-sky-300 dark:bg-sky-500/15',
+  media:
+    'border-l-4 border-violet-600 bg-violet-100/80 dark:border-violet-300 dark:bg-violet-500/15'
+}
+
+function minutesToTime(minutes: number) {
+  const safe = Math.max(0, Math.round(minutes))
+  const hours = Math.floor(safe / 60)
+  const mins = safe % 60
+  return `${`${hours}`.padStart(2, '0')}:${`${mins}`.padStart(2, '0')}`
+}
+
+function timeToMinutes(time: string) {
+  const [hours = '0', minutes = '0'] = (time ?? '00:00').split(':')
+  return Number(hours) * 60 + Number(minutes)
 }
 
 export function ConfigPanel() {
@@ -45,9 +66,18 @@ export function ConfigPanel() {
       levelSchedules: FIXED_LEVELS.map((level, index) => ({
         levelId: level.id,
         endTime: index === 0 ? '13:00' : index === 1 ? '15:00' : '17:00',
-        administrativeMode: index === 0 ? 'none' : 'custom',
-        administrativeBlocks: [],
-        breakDurations: index === 0 ? [20] : index === 1 ? [15] : [10, 15]
+        administrativeMode: (index === 0 ? 'none' : 'custom') as AdministrativeMode,
+        administrativeBlocks: [] as AdministrativeBlock[],
+        breakMode: 'custom' as BreakMode,
+        breaks:
+          index === 0
+            ? [{ start: '09:30', duration: 20 }]
+            : index === 1
+            ? [{ start: '10:15', duration: 15 }]
+            : [
+                { start: '10:15', duration: 10 },
+                { start: '14:45', duration: 15 }
+              ]
       }))
     }
   })
@@ -80,6 +110,14 @@ export function ConfigPanel() {
       setLevelSchedules(
         FIXED_LEVELS.map((level) => {
           const match = data.levelSchedules?.find((schedule) => schedule.levelId === level.id)
+          const breakMode: BreakMode = (match?.breakMode ?? 'custom') as BreakMode
+          const breaksSource =
+            breakMode === 'none'
+              ? []
+              : (match?.breaks ?? []).map((entry) => ({
+                  start: entry.start,
+                  duration: entry.duration
+                }))
           return {
             levelId: level.id,
             endTime: match?.endTime ?? (level.id === 'parvulario' ? '13:00' : level.id === 'basico' ? '15:00' : '17:00'),
@@ -89,19 +127,32 @@ export function ConfigPanel() {
               ...block,
               id: `${level.id}-${block.day}-${block.start}-${block.end}`
             })),
-            breakDurations:
-              match?.breakDurations?.length && match.breakDurations.some((item) => item > 0)
-                ? match.breakDurations.map((duration) => Math.max(1, Math.round(Number(duration) || 0)))
-                : level.id === 'parvulario'
-                ? [20]
-                : level.id === 'basico'
-                ? [15]
-                : [10, 15]
+            breakMode,
+            breaks:
+              breakMode === 'custom'
+                ? breaksSource.length > 0
+                  ? breaksSource.map((entry, index) => ({
+                      ...entry,
+                      id: `${level.id}-break-${index}-${entry.start}-${entry.duration}`
+                    }))
+                  : [
+                      {
+                        id: `${level.id}-break-default`,
+                        start: level.id === 'parvulario' ? '09:30' : level.id === 'basico' ? '10:15' : '10:15',
+                        duration: level.id === 'media' ? 10 : 15
+                      }
+                    ]
+                : []
           }
         })
       )
     }
   }, [data])
+
+  const dayStartMinutes = useMemo(() => {
+    const [hours = '0', minutes = '0'] = (dayStart ?? '00:00').split(':')
+    return Number(hours) * 60 + Number(minutes)
+  }, [dayStart])
 
   const lunchStartMinutes = useMemo(() => {
     const [hours = '0', minutes = '0'] = (lunchStart ?? '00:00').split(':')
@@ -143,6 +194,83 @@ export function ConfigPanel() {
           return false
         }
       }
+
+      if (schedule.breakMode === 'custom') {
+        if (schedule.breaks.length === 0) {
+          setError(
+            `Agrega al menos un recreo o marca "No aplica" para el nivel ${
+              FIXED_LEVELS.find((level) => level.id === schedule.levelId)?.name ?? schedule.levelId
+            }.`
+          )
+          return false
+        }
+
+        const seenStarts = new Set<number>()
+        const [endDayHour = '23', endDayMinute = '59'] = schedule.endTime.split(':')
+        const levelEndMinutes = Number(endDayHour) * 60 + Number(endDayMinute)
+
+        for (const recess of schedule.breaks) {
+          if (!recess.start) {
+            setError('Indica una hora de inicio para cada recreo.')
+            return false
+          }
+
+          const [hour = '0', minute = '0'] = recess.start.split(':')
+          const startMinutes = Number(hour) * 60 + Number(minute)
+          const duration = Math.max(1, Number(recess.duration) || 0)
+          const endMinutes = startMinutes + duration
+
+          if (startMinutes < dayStartMinutes) {
+            setError('Los recreos deben comenzar después del inicio de la jornada.')
+            return false
+          }
+
+          const diffFromStart = startMinutes - dayStartMinutes
+          if (diffFromStart % blockDuration !== 0) {
+            setError('Los recreos deben alinearse con el término de un bloque académico completo.')
+            return false
+          }
+
+          if (endMinutes > levelEndMinutes) {
+            setError('Los recreos deben finalizar antes del término diario del nivel.')
+            return false
+          }
+
+          if (seenStarts.has(startMinutes)) {
+            setError('Cada recreo debe tener una hora de inicio única dentro del mismo nivel.')
+            return false
+          }
+          seenStarts.add(startMinutes)
+
+          const overlapsLunch =
+            lunchDuration > 0 &&
+            ((startMinutes >= lunchStartMinutes && startMinutes < lunchEndMinutes) ||
+              (endMinutes > lunchStartMinutes && endMinutes <= lunchEndMinutes) ||
+              (startMinutes <= lunchStartMinutes && endMinutes >= lunchEndMinutes))
+
+          if (overlapsLunch) {
+            setError('Los recreos no pueden coincidir con la hora de almuerzo configurada.')
+            return false
+          }
+
+          const overlapsAdmin = schedule.administrativeBlocks.some((block) => {
+            const [adminStartHour = '0', adminStartMinute = '0'] = block.start.split(':')
+            const [adminEndHour = '0', adminEndMinute = '0'] = block.end.split(':')
+            const adminStart = Number(adminStartHour) * 60 + Number(adminStartMinute)
+            const adminEnd = Number(adminEndHour) * 60 + Number(adminEndMinute)
+            return (
+              (startMinutes >= adminStart && startMinutes < adminEnd) ||
+              (endMinutes > adminStart && endMinutes <= adminEnd) ||
+              (startMinutes <= adminStart && endMinutes >= adminEnd)
+            )
+          })
+
+          if (overlapsAdmin) {
+            setError('Los recreos no pueden traslaparse con las horas administrativas.')
+            return false
+          }
+        }
+      }
     }
 
     setError(null)
@@ -162,9 +290,15 @@ export function ConfigPanel() {
       lunchStart,
       lunchDuration,
       fullTimeWeeklyHours,
-      levelSchedules: levelSchedules.map(({ administrativeBlocks, breakDurations, ...rest }) => ({
+      levelSchedules: levelSchedules.map(({ administrativeBlocks, breaks, ...rest }) => ({
         ...rest,
-        breakDurations: breakDurations.map((duration) => Math.max(1, Math.round(Number(duration) || 0))),
+        breaks:
+          rest.breakMode === 'custom'
+            ? breaks.map(({ start, duration }) => ({
+                start,
+                duration: Math.max(1, Math.round(Number(duration) || 0))
+              }))
+            : [],
         administrativeBlocks: administrativeBlocks.map(({ id, ...block }) => block)
       }))
     })
@@ -301,75 +435,188 @@ export function ConfigPanel() {
                     </button>
                   </div>
                   <div className="mt-4 grid gap-2 text-sm">
-                    <p className="text-slate-600 dark:text-slate-300">Recreos (minutos entre bloques)</p>
-                    <div className="grid gap-2">
-                      {schedule.breakDurations.length === 0 && (
-                        <p className="rounded border border-dashed border-amber-300 bg-amber-100/40 p-3 text-xs text-amber-700 dark:border-amber-400/60 dark:bg-amber-400/10 dark:text-amber-200">
-                          Agrega la duración de los recreos para que el generador separe los bloques.
-                        </p>
-                      )}
-                      {schedule.breakDurations.map((duration, index) => (
-                        <div key={`${schedule.levelId}-break-${index}`} className="flex flex-wrap items-center gap-3">
-                          <input
-                            type="number"
-                            min={5}
-                            step={5}
-                            value={duration}
-                            onChange={(event) =>
-                              setLevelSchedules((current) =>
-                                current.map((item) =>
-                                  item.levelId === schedule.levelId
-                                    ? {
-                                        ...item,
-                                        breakDurations: item.breakDurations.map((value, idx) =>
-                                          idx === index ? Math.max(5, Number(event.target.value) || 5) : value
-                                        )
-                                      }
-                                    : item
-                                )
+                    <p className="text-slate-600 dark:text-slate-300">Recreos por nivel</p>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`breaks-${schedule.levelId}`}
+                          value="none"
+                          checked={schedule.breakMode === 'none'}
+                          onChange={() =>
+                            setLevelSchedules((current) =>
+                              current.map((item) =>
+                                item.levelId === schedule.levelId
+                                  ? { ...item, breakMode: 'none', breaks: [] }
+                                  : item
                               )
-                            }
-                            className="w-32 rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
-                          />
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setLevelSchedules((current) =>
-                                current.map((item) =>
-                                  item.levelId === schedule.levelId
-                                    ? {
-                                        ...item,
-                                        breakDurations: item.breakDurations.filter((_, idx) => idx !== index)
-                                      }
-                                    : item
-                                )
+                            )
+                          }
+                        />
+                        No aplica
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`breaks-${schedule.levelId}`}
+                          value="custom"
+                          checked={schedule.breakMode === 'custom'}
+                          onChange={() =>
+                            setLevelSchedules((current) =>
+                              current.map((item) =>
+                                item.levelId === schedule.levelId
+                                  ?
+                                    item.breakMode === 'custom' && item.breaks.length > 0
+                                      ? item
+                                      : {
+                                          ...item,
+                                          breakMode: 'custom',
+                                          breaks: [
+                                            {
+                                              id: `${schedule.levelId}-break-${Date.now()}`,
+                                              start: minutesToTime(
+                                                Math.min(
+                                                  dayStartMinutes + blockDuration * 2,
+                                                  Math.max(
+                                                    dayStartMinutes,
+                                                    timeToMinutes(item.endTime) - blockDuration
+                                                  )
+                                                )
+                                              ),
+                                              duration: 15
+                                            }
+                                          ]
+                                        }
+                                  : item
                               )
-                            }
-                            className="rounded border border-transparent px-3 py-1 text-xs font-semibold text-rose-500 transition hover:border-rose-300 hover:bg-rose-50 dark:hover:border-rose-400 dark:hover:bg-rose-400/10"
-                          >
-                            Quitar
-                          </button>
-                        </div>
-                      ))}
+                            )
+                          }
+                        />
+                        Personalizado
+                      </label>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setLevelSchedules((current) =>
-                          current.map((item) =>
-                            item.levelId === schedule.levelId
-                              ? {
-                                  ...item,
-                                  breakDurations: [...item.breakDurations, 15]
+                    {schedule.breakMode === 'custom' && (
+                      <div className="grid gap-2">
+                        {schedule.breaks.length === 0 && (
+                          <p className="rounded border border-dashed border-amber-300 bg-amber-100/40 p-3 text-xs text-amber-700 dark:border-amber-400/60 dark:bg-amber-400/10 dark:text-amber-200">
+                            Agrega los horarios de inicio y duración de cada recreo.
+                          </p>
+                        )}
+                        {schedule.breaks.map((recess, index) => (
+                          <div key={recess.id} className="flex flex-wrap items-center gap-3">
+                            <label className="grid gap-1 text-xs">
+                              <span className="text-slate-500 dark:text-slate-400">Inicio</span>
+                              <input
+                                type="time"
+                                value={recess.start}
+                                onChange={(event) =>
+                                  setLevelSchedules((current) =>
+                                    current.map((item) =>
+                                      item.levelId === schedule.levelId
+                                        ? {
+                                            ...item,
+                                            breaks: item.breaks.map((entry) =>
+                                              entry.id === recess.id
+                                                ? { ...entry, start: event.target.value }
+                                                : entry
+                                            )
+                                          }
+                                        : item
+                                    )
+                                  )
                                 }
-                              : item
-                          )
-                        )
-                      }
-                      className="w-fit rounded border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-600 transition hover:bg-amber-50 dark:border-amber-400/70 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-400/10"
-                    >
-                      Agregar recreo
-                    </button>
+                                className="w-32 rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                              />
+                            </label>
+                            <label className="grid gap-1 text-xs">
+                              <span className="text-slate-500 dark:text-slate-400">Duración (min)</span>
+                              <input
+                                type="number"
+                                min={5}
+                                step={5}
+                                value={recess.duration}
+                                onChange={(event) =>
+                                  setLevelSchedules((current) =>
+                                    current.map((item) =>
+                                      item.levelId === schedule.levelId
+                                        ? {
+                                            ...item,
+                                            breaks: item.breaks.map((entry) =>
+                                              entry.id === recess.id
+                                                ? {
+                                                    ...entry,
+                                                    duration: Math.max(5, Number(event.target.value) || 5)
+                                                  }
+                                                : entry
+                                            )
+                                          }
+                                        : item
+                                    )
+                                  )
+                                }
+                                className="w-28 rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setLevelSchedules((current) =>
+                                  current.map((item) =>
+                                    item.levelId === schedule.levelId
+                                      ? {
+                                          ...item,
+                                          breaks: item.breaks.filter((entry) => entry.id !== recess.id)
+                                        }
+                                      : item
+                                  )
+                                )
+                              }
+                              className="rounded border border-transparent px-3 py-1 text-xs font-semibold text-rose-500 transition hover:border-rose-300 hover:bg-rose-50 dark:hover:border-rose-400 dark:hover:bg-rose-400/10"
+                            >
+                              Quitar
+                            </button>
+                            <span className="text-xs text-slate-400 dark:text-slate-500">
+                              Se aplicará entre bloques consecutivos.
+                            </span>
+                          </div>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setLevelSchedules((current) =>
+                              current.map((item) =>
+                                item.levelId === schedule.levelId
+                                  ? {
+                                      ...item,
+                                      breaks: [
+                                        ...item.breaks,
+                                        {
+                                          id: `${schedule.levelId}-break-${Date.now()}`,
+                                          start: minutesToTime(
+                                            Math.min(
+                                              timeToMinutes(
+                                                item.breaks[item.breaks.length - 1]?.start ?? minutesToTime(dayStartMinutes)
+                                              ) + blockDuration,
+                                              Math.max(
+                                                dayStartMinutes,
+                                                timeToMinutes(item.endTime) - blockDuration
+                                              )
+                                            )
+                                          ),
+                                          duration: item.breaks[item.breaks.length - 1]?.duration ?? 15
+                                        }
+                                      ]
+                                    }
+                                  : item
+                              )
+                            )
+                          }
+                          className="w-fit rounded border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-600 transition hover:bg-amber-50 dark:border-amber-400/70 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-400/10"
+                        >
+                          Agregar recreo
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-4 grid gap-2 text-sm">
                     <p className="text-slate-600 dark:text-slate-300">Horas administrativas (obligatorio seleccionar una opción)</p>

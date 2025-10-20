@@ -21,12 +21,20 @@ export interface AdministrativeBlock {
 
 export type AdministrativeMode = 'none' | 'custom'
 
+export type BreakMode = 'none' | 'custom'
+
+export interface BreakConfig {
+  start: string
+  duration: number
+}
+
 export interface LevelScheduleConfig {
   levelId: string
   endTime: string
   administrativeMode: AdministrativeMode
   administrativeBlocks: AdministrativeBlock[]
-  breakDurations: number[]
+  breakMode: BreakMode
+  breaks: BreakConfig[]
 }
 
 const LOCAL_STORAGE_KEY = 'scheduler-config-cache'
@@ -58,21 +66,43 @@ const defaultConfig: Required<
       endTime: '13:00',
       administrativeMode: 'none',
       administrativeBlocks: [],
-      breakDurations: [20]
+      breakMode: 'custom',
+      breaks: [
+        {
+          start: '09:30',
+          duration: 20
+        }
+      ]
     },
     {
       levelId: 'basico',
       endTime: '15:00',
       administrativeMode: 'custom',
       administrativeBlocks: [],
-      breakDurations: [15]
+      breakMode: 'custom',
+      breaks: [
+        {
+          start: '10:15',
+          duration: 15
+        }
+      ]
     },
     {
       levelId: 'media',
       endTime: '17:00',
       administrativeMode: 'custom',
       administrativeBlocks: [],
-      breakDurations: [10, 15]
+      breakMode: 'custom',
+      breaks: [
+        {
+          start: '10:15',
+          duration: 10
+        },
+        {
+          start: '14:45',
+          duration: 15
+        }
+      ]
     }
   ]
 }
@@ -112,10 +142,17 @@ function writeLocalConfig(config: ConfigResponse) {
   }
 }
 
-function normaliseBreaks(breakDurations?: number[]) {
-  return (breakDurations ?? [])
-    .map((duration) => Math.max(0, Math.round(Number(duration) || 0)))
-    .filter((duration) => duration > 0)
+function normaliseBreaks(breaks?: BreakConfig[], mode?: BreakMode) {
+  if (mode === 'none') {
+    return []
+  }
+
+  return (breaks ?? [])
+    .map((entry) => ({
+      start: entry.start ?? '10:00',
+      duration: Math.max(1, Math.round(Number(entry.duration) || 0))
+    }))
+    .filter((entry) => entry.duration > 0)
 }
 
 function mergeWithDefaults(config?: ConfigResponse): ConfigResponse {
@@ -128,13 +165,31 @@ function mergeWithDefaults(config?: ConfigResponse): ConfigResponse {
     const blocks = Array.isArray(inputSchedule?.administrativeBlocks)
       ? inputSchedule?.administrativeBlocks ?? []
       : defaultSchedule.administrativeBlocks
-    const breaks = normaliseBreaks(inputSchedule?.breakDurations)
+    const legacyDurations = Array.isArray((inputSchedule as any)?.breakDurations)
+      ? ((inputSchedule as any)?.breakDurations as number[])
+      : undefined
+    const breakMode: BreakMode =
+      (inputSchedule?.breakMode as BreakMode | undefined) ??
+      (legacyDurations && legacyDurations.length === 0 ? 'none' : defaultSchedule.breakMode)
+    const baseBreaks =
+      inputSchedule?.breaks ??
+      (legacyDurations
+        ? legacyDurations.map((duration, index) => ({
+            start:
+              defaultSchedule.breaks[index % defaultSchedule.breaks.length]?.start ??
+              defaultSchedule.breaks[0]?.start ??
+              '10:00',
+            duration
+          }))
+        : undefined)
+    const breaks = normaliseBreaks(baseBreaks, breakMode)
     return {
       ...defaultSchedule,
       ...inputSchedule,
       administrativeMode: inputSchedule?.administrativeMode ?? defaultSchedule.administrativeMode,
       administrativeBlocks: blocks,
-      breakDurations: breaks.length ? breaks : defaultSchedule.breakDurations
+      breakMode,
+      breaks
     }
   })
 
