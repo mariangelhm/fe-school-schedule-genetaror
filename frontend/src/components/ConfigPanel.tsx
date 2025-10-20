@@ -38,6 +38,7 @@ const LEVEL_BADGES: Record<string, string> = {
     'border-l-4 border-violet-600 bg-violet-100/80 dark:border-violet-300 dark:bg-violet-500/15'
 }
 
+// Función que transforma minutos en formato HH:mm para los inputs de tiempo.
 function minutesToTime(minutes: number) {
   const safe = Math.max(0, Math.round(minutes))
   const hours = Math.floor(safe / 60)
@@ -45,11 +46,13 @@ function minutesToTime(minutes: number) {
   return `${`${hours}`.padStart(2, '0')}:${`${mins}`.padStart(2, '0')}`
 }
 
+// Función que traduce un texto HH:mm a minutos para cálculos internos.
 function timeToMinutes(time: string) {
   const [hours = '0', minutes = '0'] = (time ?? '00:00').split(':')
   return Number(hours) * 60 + Number(minutes)
 }
 
+// Componente que permite editar la configuración general y por nivel.
 export function ConfigPanel() {
   const queryClient = useQueryClient()
   const { data, isFetching } = useQuery(['config'], fetchConfig, {

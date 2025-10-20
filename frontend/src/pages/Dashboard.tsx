@@ -2,6 +2,7 @@
 import { Link } from 'react-router-dom'
 import { useSchedulerDataStore } from '../store/useSchedulerData'
 
+// Componente que muestra métricas generales y accesos directos a los mantenedores.
 export function Dashboard() {
   const subjects = useSchedulerDataStore((state) => state.subjects)
   const courses = useSchedulerDataStore((state) => state.courses)

@@ -12,6 +12,7 @@ export interface GenerationPayload {
   replaceExisting: boolean
 }
 
+// Función que simula la generación y devuelve un resumen vacío.
 export async function generateSchedule(_: GenerationPayload): Promise<ScheduleSummary> {
   return Promise.resolve({ generatedCourses: 0, assignedTeachers: 0, totalSessions: 0 })
 }

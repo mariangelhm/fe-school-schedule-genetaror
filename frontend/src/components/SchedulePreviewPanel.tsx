@@ -7,6 +7,13 @@ interface SchedulePreviewPanelProps {
   preview: SchedulePreview
 }
 
+interface CellPresentation {
+  background: string
+  textColor: string
+  metaColor: string
+}
+
+// Función que transforma minutos en una representación legible con horas y minutos.
 function formatMinutes(minutes: number) {
   const hours = Math.floor(minutes / 60)
   const remaining = minutes % 60
@@ -19,27 +26,37 @@ function formatMinutes(minutes: number) {
   return `${hours} h ${remaining} min`
 }
 
-function getCellBackground(cell: PreviewTable['rows'][number]['cells'][number] | null) {
+// Función que determina los colores de fondo y texto de cada celda según su tipo.
+function getCellPresentation(
+  cell: PreviewTable['rows'][number]['cells'][number] | null
+): CellPresentation {
   if (!cell) {
-    return '#f8fafc'
+    return {
+      background: 'var(--schedule-free-bg)',
+      textColor: 'var(--schedule-free-text)',
+      metaColor: 'var(--schedule-free-meta)'
+    }
   }
   if (cell.type === 'class') {
-    return cell.color
+    return { background: cell.color, textColor: '#ffffff', metaColor: 'rgba(255,255,255,0.85)' }
   }
   if (cell.type === 'admin') {
-    return '#cbd5f5'
+    return { background: '#cbd5f5', textColor: '#0f172a', metaColor: '#1e293b' }
   }
   if (cell.type === 'lunch') {
-    return '#f97316'
+    return { background: '#f97316', textColor: '#ffffff', metaColor: 'rgba(255,255,255,0.85)' }
   }
   if (cell.type === 'break') {
-    return '#facc15'
+    return { background: '#facc15', textColor: '#0f172a', metaColor: '#1f2937' }
   }
-  return '#f1f5f9'
+  return {
+    background: 'var(--schedule-free-bg)',
+    textColor: 'var(--schedule-free-text)',
+    metaColor: 'var(--schedule-free-meta)'
+  }
 }
 
-// Genera un documento PDF en orientación horizontal con una página por curso y
-// otra por profesor, incluyendo resúmenes y encabezados institucionales.
+// Función que genera un PDF horizontal con una página por curso y otra por profesor.
 function exportPreviewAsPdf(preview: SchedulePreview) {
   if (typeof window === 'undefined') {
     return
@@ -86,10 +103,7 @@ function exportPreviewAsPdf(preview: SchedulePreview) {
       .map((row) => {
         const cells = row.cells
           .map((cell) => {
-            const background = getCellBackground(cell ?? null)
-            const isClass = cell?.type === 'class'
-            const textColor = isClass ? '#ffffff' : '#0f172a'
-            const metaColor = isClass ? 'rgba(255,255,255,0.85)' : '#475569'
+            const { background, textColor, metaColor } = getCellPresentation(cell ?? null)
             const subject = cell?.subject ?? 'Sin clase'
             const teacher = cell?.teacher
               ? `<div class="cell-meta" style="color:${metaColor};">${cell.teacher}</div>`
@@ -142,7 +156,10 @@ function exportPreviewAsPdf(preview: SchedulePreview) {
     const subjectsHtml = subjectMinutes.size
       ? `<ul>${Array.from(subjectMinutes.entries())
           .sort((a, b) => b[1] - a[1])
-          .map(([subject, minutes]) => `<li><strong>${subject}:</strong> ${formatMinutes(minutes)}</li>`)
+          .map(
+            ([subject, minutes]) =>
+              `<li><strong>${subject} (semanal):</strong> ${formatMinutes(minutes)}</li>`
+          )
           .join('')}</ul>`
       : '<p class="muted">Sin clases asignadas.</p>'
 
@@ -158,9 +175,9 @@ function exportPreviewAsPdf(preview: SchedulePreview) {
         <h4>Resumen del curso</h4>
         <div class="summary-grid">
           <div>
-            <p><strong>Horas de clase:</strong> ${formatMinutes(classMinutes)}</p>
-            <p><strong>Horas administrativas:</strong> ${formatMinutes(adminMinutes)}</p>
-            <p><strong>Tiempo de recreos:</strong> ${formatMinutes(breakMinutes)}</p>
+            <p><strong>Horas de clase (semanales):</strong> ${formatMinutes(classMinutes)}</p>
+            <p><strong>Horas administrativas (semanales):</strong> ${formatMinutes(adminMinutes)}</p>
+            <p><strong>Tiempo de recreos (semanales):</strong> ${formatMinutes(breakMinutes)}</p>
           </div>
           <div>
             <p><strong>Docentes asignados:</strong></p>
@@ -196,7 +213,10 @@ function exportPreviewAsPdf(preview: SchedulePreview) {
     const adminMinutes = summary?.administrativeMinutes ?? 0
     const subjectList = summary?.subjectMinutes.length
       ? `<ul>${summary.subjectMinutes
-          .map((entry) => `<li><strong>${entry.subject}:</strong> ${formatMinutes(entry.minutes)}</li>`)
+          .map(
+            (entry) =>
+              `<li><strong>${entry.subject} (semanal):</strong> ${formatMinutes(entry.minutes)}</li>`
+          )
           .join('')}</ul>`
       : '<p class="muted">Sin asignaturas registradas.</p>'
     const coursesHtml = courseSet.size
@@ -211,9 +231,9 @@ function exportPreviewAsPdf(preview: SchedulePreview) {
         <h4>Resumen del profesor</h4>
         <div class="summary-grid">
           <div>
-            <p><strong>Horas de clase:</strong> ${formatMinutes(classMinutes)}</p>
-            <p><strong>Horas administrativas:</strong> ${formatMinutes(adminMinutes)}</p>
-            <p><strong>Tiempo de recreos:</strong> ${formatMinutes(breakMinutes)}</p>
+            <p><strong>Horas de clase (semanales):</strong> ${formatMinutes(classMinutes)}</p>
+            <p><strong>Horas administrativas (semanales):</strong> ${formatMinutes(adminMinutes)}</p>
+            <p><strong>Tiempo de recreos (semanales):</strong> ${formatMinutes(breakMinutes)}</p>
           </div>
           <div>
             <p><strong>Cursos atendidos:</strong></p>
@@ -256,6 +276,11 @@ function exportPreviewAsPdf(preview: SchedulePreview) {
 
   const styles = `
     <style>
+      :root {
+        --schedule-free-bg: #f1f5f9;
+        --schedule-free-text: #0f172a;
+        --schedule-free-meta: #475569;
+      }
       @page { size: A4 landscape; margin: 15mm; }
       * { box-sizing: border-box; }
       body { font-family: 'Inter', Arial, sans-serif; margin: 0; padding: 24px; background: #e2e8f0; color: #0f172a; }
@@ -299,6 +324,7 @@ function exportPreviewAsPdf(preview: SchedulePreview) {
   printable.print()
 }
 
+// Función que pinta la tabla HTML reutilizable para cursos o profesores.
 function renderTable(table: PreviewTable, days: readonly string[]) {
   return (
     <div key={table.id} className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
@@ -324,21 +350,24 @@ function renderTable(table: PreviewTable, days: readonly string[]) {
                   {row.time}
                 </td>
                 {row.cells.map((cell, cellIndex) => {
-                  const background = getCellBackground(cell)
-                  const textColor = cell?.type === 'class' ? 'text-white' : 'text-slate-800 dark:text-slate-100'
+                  const { background, textColor, metaColor } = getCellPresentation(cell ?? null)
                   return (
                     <td
                       key={`${table.id}-${rowIndex}-${cellIndex}`}
-                      className={`align-top px-3 py-2 ${textColor}`}
-                      style={{ background }}
+                      className="align-top px-3 py-2"
+                      style={{ background, color: textColor }}
                     >
                       <div className="grid gap-1">
                         <span className="font-semibold text-sm">{cell?.subject ?? 'Sin clase'}</span>
                         {cell?.teacher && (
-                          <span className="text-xs text-slate-700 dark:text-slate-200">{cell.teacher}</span>
+                          <span className="text-xs" style={{ color: metaColor }}>
+                            {cell.teacher}
+                          </span>
                         )}
                         {cell?.course && (
-                          <span className="text-xs text-slate-600 dark:text-slate-300">{cell.course}</span>
+                          <span className="text-xs" style={{ color: metaColor }}>
+                            {cell.course}
+                          </span>
                         )}
                       </div>
                     </td>
@@ -353,6 +382,7 @@ function renderTable(table: PreviewTable, days: readonly string[]) {
   )
 }
 
+// Componente principal que ofrece filtros, tablas y exportación para la previsualización.
 export function SchedulePreviewPanel({ preview }: SchedulePreviewPanelProps) {
   const [activeTab, setActiveTab] = useState<'courses' | 'teachers'>('courses')
   const [courseFilter, setCourseFilter] = useState('')
@@ -509,9 +539,9 @@ export function SchedulePreviewPanel({ preview }: SchedulePreviewPanelProps) {
             <thead>
               <tr className="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                 <th className="pb-2">Profesor</th>
-                <th className="pb-2">Horas clase</th>
-                <th className="pb-2">Horas adm.</th>
-                <th className="pb-2">Detalle asignaturas</th>
+                <th className="pb-2">Horas clase (sem.)</th>
+                <th className="pb-2">Horas adm. (sem.)</th>
+                <th className="pb-2">Detalle asignaturas (sem.)</th>
               </tr>
             </thead>
             <tbody>
@@ -527,7 +557,7 @@ export function SchedulePreviewPanel({ preview }: SchedulePreviewPanelProps) {
                       <ul className="space-y-1">
                         {summary.subjectMinutes.map((entry) => (
                           <li key={`${summary.teacherId}-${entry.subject}`}> 
-                            <span className="font-medium">{entry.subject}:</span> {formatMinutes(entry.minutes)}
+                            <span className="font-medium">{entry.subject}:</span> {formatMinutes(entry.minutes)} semanales
                           </li>
                         ))}
                       </ul>
@@ -547,7 +577,7 @@ export function SchedulePreviewPanel({ preview }: SchedulePreviewPanelProps) {
             {preview.subjectTotals.map((subject) => (
               <li key={subject.subjectId} className="flex items-center justify-between rounded bg-slate-100 px-3 py-2 text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">
                 <span>{subject.subjectName}</span>
-                <span className="font-semibold">{formatMinutes(subject.minutes)}</span>
+                <span className="font-semibold">{formatMinutes(subject.minutes)} sem.</span>
               </li>
             ))}
           </ul>

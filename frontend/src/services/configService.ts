@@ -107,6 +107,7 @@ const defaultConfig: Required<
   ]
 }
 
+// Función que obtiene localStorage si existe en el contexto del navegador.
 function getStorage() {
   if (typeof window === 'undefined') {
     return null
@@ -114,6 +115,7 @@ function getStorage() {
   return window.localStorage
 }
 
+// Función que lee la configuración guardada en localStorage.
 function readLocalConfig(): ConfigResponse | null {
   const storage = getStorage()
   if (!storage) {
@@ -129,6 +131,7 @@ function readLocalConfig(): ConfigResponse | null {
   }
 }
 
+// Función que persiste la configuración en localStorage.
 function writeLocalConfig(config: ConfigResponse) {
   const storage = getStorage()
   if (!storage) {
@@ -142,6 +145,7 @@ function writeLocalConfig(config: ConfigResponse) {
   }
 }
 
+// Función que normaliza la lista de recreos según el modo seleccionado.
 function normaliseBreaks(breaks?: BreakConfig[], mode?: BreakMode) {
   if (mode === 'none') {
     return []
@@ -155,6 +159,7 @@ function normaliseBreaks(breaks?: BreakConfig[], mode?: BreakMode) {
     .filter((entry) => entry.duration > 0)
 }
 
+// Función que combina la configuración entrante con los valores por defecto.
 function mergeWithDefaults(config?: ConfigResponse): ConfigResponse {
   const merged = { ...config }
 
@@ -204,6 +209,7 @@ function mergeWithDefaults(config?: ConfigResponse): ConfigResponse {
   }
 }
 
+// Función que obtiene la configuración combinando almacenamiento local y valores por defecto.
 export async function fetchConfig(): Promise<ConfigResponse> {
   try {
     const { data } = await axios.get<ConfigResponse>('config')
@@ -227,6 +233,7 @@ interface UpdateConfigPayload {
   levelSchedules: LevelScheduleConfig[]
 }
 
+// Función que guarda la configuración y devuelve el estado normalizado.
 export async function updateConfig(payload: UpdateConfigPayload): Promise<ConfigResponse> {
   try {
     const { data } = await axios.put<ConfigResponse>('config', payload)

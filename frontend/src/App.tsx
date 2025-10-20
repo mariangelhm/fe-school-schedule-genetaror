@@ -15,6 +15,7 @@ import { CoursesPage } from './pages/maintainers/CoursesPage'
 import { TeachersPage } from './pages/maintainers/TeachersPage'
 import { ClassroomsPage } from './pages/maintainers/ClassroomsPage'
 
+// Componente raíz que orquesta rutas y aplica el tema global.
 export default function App() {
   const { data } = useQuery(['config'], fetchConfig, {
     staleTime: 1000 * 60 * 5,

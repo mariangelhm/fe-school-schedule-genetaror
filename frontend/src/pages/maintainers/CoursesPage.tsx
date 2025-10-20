@@ -12,6 +12,7 @@ import {
 
 type CourseDraft = Omit<CourseData, 'id'>
 
+// Función que arma el borrador inicial de un curso según su nivel.
 function buildCourseDraft(levelId: string, classrooms: ClassroomData[]): CourseDraft {
   return {
     name: '',
@@ -21,6 +22,7 @@ function buildCourseDraft(levelId: string, classrooms: ClassroomData[]): CourseD
   }
 }
 
+// Componente que administra los cursos y sus relaciones con aulas y profesores jefes.
 export function CoursesPage() {
   const courses = useSchedulerDataStore((state) => state.courses)
   const levels = useSchedulerDataStore((state) => state.levels)

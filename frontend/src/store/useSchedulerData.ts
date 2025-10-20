@@ -158,6 +158,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
   persist(
     (set, get) => ({
       ...defaultState,
+      // Método que agrega un aula nueva asegurando que no exista otra con el mismo nombre en el nivel.
       addClassroom: (classroom) => {
         let success = false
         const levelId = FIXED_LEVELS.some((level) => level.id === classroom.levelId)
@@ -182,6 +183,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         })
         return success
       },
+      // Método que actualiza un aula y mantiene la unicidad por nombre y nivel.
       updateClassroom: (id, classroom) => {
         let success = false
         const levelId = FIXED_LEVELS.some((level) => level.id === classroom.levelId)
@@ -207,6 +209,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         })
         return success
       },
+      // Método que elimina un aula y limpia su referencia en los cursos asociados.
       removeClassroom: (id) => {
         set((state) => ({
           classrooms: state.classrooms.filter((classroom) => classroom.id !== id),
@@ -215,6 +218,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           )
         }))
       },
+      // Método que registra una asignatura nueva validando duplicados por nivel.
       addSubject: (subject) => {
         let success = false
         const levelId = FIXED_LEVELS.some((level) => level.id === subject.levelId)
@@ -248,6 +252,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         })
         return success
       },
+      // Método que edita una asignatura y sincroniza las referencias de los profesores.
       updateSubject: (id, subject) => {
         let success = false
         const levelId = FIXED_LEVELS.some((level) => level.id === subject.levelId)
@@ -296,6 +301,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         })
         return success
       },
+      // Método que elimina una asignatura y limpia a los docentes que se quedan sin materias.
       removeSubject: (id) => {
         set((state) => {
           const subjects = state.subjects.filter((subject) => subject.id !== id)
@@ -312,6 +318,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           return { subjects, teachers }
         })
       },
+      // Método que crea un curso nuevo controlando el uso exclusivo del aula.
       addCourse: (course) => {
         let success = false
         const levelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
@@ -338,6 +345,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         })
         return success
       },
+      // Método que actualiza un curso y ajusta a los profesores vinculados.
       updateCourse: (id, course) => {
         let success = false
         const levelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
@@ -389,6 +397,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         })
         return success
       },
+      // Método que elimina un curso y reacomoda los docentes restantes.
       removeCourse: (id) => {
         set((state) => {
           const remainingCourses = state.courses.filter((course) => course.id !== id)
@@ -413,6 +422,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           }
         })
       },
+      // Método que incorpora un profesor respetando nivel, cursos asignables y tipo de asignatura.
       addTeacher: (teacher) => {
         let success = false
         const levelId = FIXED_LEVELS.some((level) => level.id === teacher.levelId)
@@ -459,6 +469,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         })
         return success
       },
+      // Método que actualiza un profesor conservando las reglas de asignación especial.
       updateTeacher: (id, teacher) => {
         let success = false
         const levelId = FIXED_LEVELS.some((level) => level.id === teacher.levelId)
@@ -506,6 +517,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         })
         return success
       },
+      // Método que elimina a un profesor del catálogo.
       removeTeacher: (id) => {
         set((state) => ({
           teachers: state.teachers.filter((teacher) => teacher.id !== id)
@@ -515,6 +527,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
     {
       name: 'scheduler-data-store',
       version: 8,
+      // Función que migra datos antiguos del almacenamiento local a la forma actual del store.
       migrate: (persistedState: any) => {
         if (!persistedState) {
           return persistedState as SchedulerState

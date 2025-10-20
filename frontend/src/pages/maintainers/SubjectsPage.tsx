@@ -21,6 +21,7 @@ interface SubjectDraft {
   preferredTime: SubjectPreferredTime
 }
 
+// Función que genera el estado inicial del formulario de asignaturas.
 function createEmptyDraft(levelId: string): SubjectDraft {
   return {
     name: '',
@@ -33,6 +34,7 @@ function createEmptyDraft(levelId: string): SubjectDraft {
   }
 }
 
+// Componente que administra la creación y edición de asignaturas.
 export function SubjectsPage() {
   const subjects = useSchedulerDataStore((state) => state.subjects)
   const levels = useSchedulerDataStore((state) => state.levels)

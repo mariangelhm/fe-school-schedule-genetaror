@@ -11,6 +11,7 @@ const navItems = [
   { path: '/config', label: 'Configuración' }
 ]
 
+// Componente que entrega la barra superior con navegación principal.
 export function TopNavigation({ schoolName }: TopNavigationProps) {
   return (
     <header className="border-b border-slate-200 bg-white/80 backdrop-blur dark:border-slate-800 dark:bg-slate-950/80">

@@ -4,6 +4,7 @@ import { FIXED_LEVELS, useSchedulerDataStore, type ClassroomData } from '../../s
 
 interface ClassroomDraft extends Omit<ClassroomData, 'id'> {}
 
+// Componente que gestiona las aulas disponibles por nivel.
 export function ClassroomsPage() {
   const classrooms = useSchedulerDataStore((state) => state.classrooms)
   const addClassroom = useSchedulerDataStore((state) => state.addClassroom)

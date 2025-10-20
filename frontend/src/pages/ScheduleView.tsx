@@ -8,6 +8,7 @@ import { SchedulePreviewPanel } from '../components/SchedulePreviewPanel'
 import { buildSchedulePreview, type SchedulePreview } from '../utils/schedulePreview'
 import { DEFAULT_LEVEL_ID, useSchedulerDataStore } from '../store/useSchedulerData'
 
+// Componente que coordina la selección de nivel y muestra la previsualización de horarios.
 export function ScheduleView() {
   const levels = useSchedulerDataStore((state) => state.levels)
   const courses = useSchedulerDataStore((state) => state.courses)

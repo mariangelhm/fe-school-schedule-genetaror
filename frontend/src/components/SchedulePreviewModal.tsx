@@ -9,6 +9,7 @@ interface SchedulePreviewModalProps {
   onClose?: () => void
 }
 
+// Componente que actúa como envoltorio legado delegando al panel de previsualización.
 export function SchedulePreviewModal({ preview, onClose }: SchedulePreviewModalProps) {
   if (!preview) {
     return null

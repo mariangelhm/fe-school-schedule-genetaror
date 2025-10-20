@@ -7,6 +7,7 @@ interface MaintenanceLayoutProps {
   children: ReactNode
 }
 
+// Componente que estandariza la cabecera y navegación de los mantenedores.
 export function MaintenanceLayout({ title, description, children }: MaintenanceLayoutProps) {
   return (
     <section className="grid gap-6">

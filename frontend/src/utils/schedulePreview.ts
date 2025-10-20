@@ -133,11 +133,13 @@ interface TeacherSlotRecord {
 
 type TeacherAssignmentMatrix = Map<number, Map<number, Set<number>>>
 
+// Función que convierte un texto HH:mm a su equivalente en minutos absolutos.
 function timeToMinutes(time: string): number {
   const [hour = '0', minute = '0'] = time.split(':')
   return Number(hour) * 60 + Number(minute)
 }
 
+// Función que convierte minutos absolutos a un texto HH:mm formateado.
 function minutesToTime(minutes: number): string {
   const total = ((minutes % (24 * 60)) + 24 * 60) % (24 * 60)
   const hour = Math.floor(total / 60)
@@ -145,10 +147,12 @@ function minutesToTime(minutes: number): string {
   return `${`${hour}`.padStart(2, '0')}:${`${minute}`.padStart(2, '0')}`
 }
 
+// Función que devuelve el rango horario legible dado un inicio y una duración.
 function minutesToRange(start: number, duration: number): string {
   return `${minutesToTime(start)} - ${minutesToTime(start + duration)}`
 }
 
+// Función que clasifica un bloque como mañana o tarde considerando el almuerzo.
 function determineTimeOfDay(
   lunchStart: number | null,
   lunchEnd: number | null,
@@ -167,10 +171,12 @@ function determineTimeOfDay(
   return slotStart < lunchStart ? 'morning' : 'afternoon'
 }
 
+// Función que detecta si dos rangos de tiempo se sobreponen.
 function rangesOverlap(startA: number, endA: number, startB: number, endB: number) {
   return startA < endB && endA > startB
 }
 
+// Función que construye la línea de tiempo diaria de un curso con bloques especiales.
 function buildTimeline(course: CourseData, config: ConfigResponse): TimelineData {
   const blockDuration = Math.max(30, config.blockDuration ?? 45)
   const dayStartMinutes = timeToMinutes(config.dayStart ?? '08:00')
@@ -299,6 +305,7 @@ function buildTimeline(course: CourseData, config: ConfigResponse): TimelineData
   return { perDaySlots, classSlots, structure, adminMinutes, breakMinutes }
 }
 
+// Función que normaliza la disponibilidad semanal de cada profesor en bloques.
 function createTeacherCapacities(teachers: TeacherData[], blockDuration: number) {
   const map = new Map<number, TeacherCapacity>()
   teachers.forEach((teacher) => {
@@ -317,6 +324,7 @@ function createTeacherCapacities(teachers: TeacherData[], blockDuration: number)
   return map
 }
 
+// Función que selecciona al mejor profesor disponible para un bloque específico.
 function pickTeacher(
   subjectId: number,
   courseId: number,
@@ -346,6 +354,7 @@ function pickTeacher(
   return null
 }
 
+// Función que genera índices para localizar asignaturas y profesores válidos.
 function buildCandidateIndexes(
   daySlots: ClassSlotMeta[],
   preferredTime: SubjectData['preferredTime'],
@@ -364,6 +373,7 @@ function buildCandidateIndexes(
   return [...matching.sort(sortFn), ...remaining.sort(sortFn)]
 }
 
+// Función que valida que no se excedan los bloques consecutivos por asignatura.
 function violatesConsecutive(
   assignments: (SlotAssignment | null)[],
   slotIndex: number,
@@ -374,6 +384,7 @@ function violatesConsecutive(
   return Boolean(prev && prevPrev && prev.subjectName === subjectName && prevPrev.subjectName === subjectName)
 }
 
+// Función que asigna las sesiones de un curso respetando reglas de disponibilidad.
 function distributeCourse(
   course: CourseData,
   timeline: TimelineData,
@@ -582,11 +593,13 @@ function distributeCourse(
   return { rows, sessions, teacherSlots }
 }
 
+// Función que crea un color identificador estable para cada etiqueta de profesor.
 function generateTagColor(index: number): string {
   const hue = (index * 67) % 360
   return `hsl(${hue} 70% 45%)`
 }
 
+// Función principal que genera la previsualización completa para un nivel dado.
 export function buildSchedulePreview(
   input: BuildPreviewInput
 ): { preview?: SchedulePreview; error?: string } {

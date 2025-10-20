@@ -5,10 +5,16 @@
 :root {
   color-scheme: light;
   --brand-color: #2563eb;
+  --schedule-free-bg: #f1f5f9;
+  --schedule-free-text: #0f172a;
+  --schedule-free-meta: #475569;
 }
 
 :root.dark {
   color-scheme: dark;
+  --schedule-free-bg: #1e293b;
+  --schedule-free-text: #e2e8f0;
+  --schedule-free-meta: #cbd5f5;
 }
 
 body {

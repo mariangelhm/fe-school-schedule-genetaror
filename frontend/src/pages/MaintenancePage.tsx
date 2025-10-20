@@ -7,6 +7,7 @@ const resources = [
   { name: 'Aulas', href: '/maintenance/classrooms' }
 ]
 
+// Componente que resume los accesos a cada mantenedor del sistema.
 export function MaintenancePage() {
   return (
     <section className="grid gap-6">

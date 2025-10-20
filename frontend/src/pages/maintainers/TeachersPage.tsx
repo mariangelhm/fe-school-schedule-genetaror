@@ -21,6 +21,7 @@ interface TeacherDraft {
   contractType: 'full-time' | 'part-time'
 }
 
+// Función que genera el borrador inicial para crear profesores.
 function buildEmptyDraft(levelId: string, fullTimeHours: number): TeacherDraft {
   return {
     name: '',
@@ -32,6 +33,7 @@ function buildEmptyDraft(levelId: string, fullTimeHours: number): TeacherDraft {
   }
 }
 
+// Función que ajusta la lista de cursos según si la asignatura es especial.
 function normaliseCourseIds(
   courseIds: number[],
   teachesSpecial: boolean,
@@ -45,6 +47,7 @@ function normaliseCourseIds(
   return teachesSpecial ? validIds : validIds.slice(0, 1)
 }
 
+// Componente que administra el catálogo de profesores y sus restricciones.
 export function TeachersPage() {
   const teachers = useSchedulerDataStore((state) => state.teachers)
   const subjectsData = useSchedulerDataStore((state) => state.subjects)
