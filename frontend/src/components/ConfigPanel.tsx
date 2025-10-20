@@ -7,6 +7,7 @@ import {
   fetchConfig,
   updateConfig,
   type AdministrativeBlock,
+  type AdministrativeMode,
   type LevelScheduleConfig
 } from '../services/configService'
 import { FIXED_LEVELS } from '../store/useSchedulerData'
@@ -18,6 +19,14 @@ interface AdministrativeBlockForm extends AdministrativeBlock {
 
 interface LevelScheduleForm extends LevelScheduleConfig {
   administrativeBlocks: AdministrativeBlockForm[]
+}
+
+// Paleta utilizada para diferenciar visualmente la tarjeta de cada nivel.
+const LEVEL_BADGES: Record<string, string> = {
+  parvulario:
+    'border-l-4 border-amber-400 bg-amber-50/60 dark:border-amber-400/80 dark:bg-amber-400/10',
+  basico: 'border-l-4 border-sky-500 bg-sky-50/60 dark:border-sky-400/80 dark:bg-sky-400/10',
+  media: 'border-l-4 border-violet-500 bg-violet-50/60 dark:border-violet-400/80 dark:bg-violet-400/10'
 }
 
 export function ConfigPanel() {
@@ -36,7 +45,9 @@ export function ConfigPanel() {
       levelSchedules: FIXED_LEVELS.map((level, index) => ({
         levelId: level.id,
         endTime: index === 0 ? '13:00' : index === 1 ? '15:00' : '17:00',
-        administrativeBlocks: []
+        administrativeMode: index === 0 ? 'none' : 'custom',
+        administrativeBlocks: [],
+        breakDurations: index === 0 ? [20] : index === 1 ? [15] : [10, 15]
       }))
     }
   })
@@ -72,10 +83,20 @@ export function ConfigPanel() {
           return {
             levelId: level.id,
             endTime: match?.endTime ?? (level.id === 'parvulario' ? '13:00' : level.id === 'basico' ? '15:00' : '17:00'),
+            administrativeMode:
+              (match?.administrativeMode as AdministrativeMode) ?? (level.id === 'parvulario' ? 'none' : 'custom'),
             administrativeBlocks: (match?.administrativeBlocks ?? []).map((block) => ({
               ...block,
               id: `${level.id}-${block.day}-${block.start}-${block.end}`
-            }))
+            })),
+            breakDurations:
+              match?.breakDurations?.length && match.breakDurations.some((item) => item > 0)
+                ? match.breakDurations.map((duration) => Math.max(1, Math.round(Number(duration) || 0)))
+                : level.id === 'parvulario'
+                ? [20]
+                : level.id === 'basico'
+                ? [15]
+                : [10, 15]
           }
         })
       )
@@ -91,6 +112,15 @@ export function ConfigPanel() {
 
   const validateSchedules = () => {
     for (const schedule of levelSchedules) {
+      if (schedule.administrativeMode === 'custom' && schedule.administrativeBlocks.length === 0) {
+        setError(
+          `Agrega al menos una franja administrativa o marca "No aplica" para el nivel ${
+            FIXED_LEVELS.find((level) => level.id === schedule.levelId)?.name ?? schedule.levelId
+          }.`
+        )
+        return false
+      }
+
       for (const block of schedule.administrativeBlocks) {
         const [startHour = '0', startMinute = '0'] = block.start.split(':')
         const [endHour = '0', endMinute = '0'] = block.end.split(':')
@@ -132,8 +162,9 @@ export function ConfigPanel() {
       lunchStart,
       lunchDuration,
       fullTimeWeeklyHours,
-      levelSchedules: levelSchedules.map(({ administrativeBlocks, ...rest }) => ({
+      levelSchedules: levelSchedules.map(({ administrativeBlocks, breakDurations, ...rest }) => ({
         ...rest,
+        breakDurations: breakDurations.map((duration) => Math.max(1, Math.round(Number(duration) || 0))),
         administrativeBlocks: administrativeBlocks.map(({ id, ...block }) => block)
       }))
     })
@@ -211,7 +242,12 @@ export function ConfigPanel() {
             {levelSchedules.map((schedule) => {
               const level = FIXED_LEVELS.find((item) => item.id === schedule.levelId)
               return (
-                <div key={schedule.levelId} className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                <div
+                  key={schedule.levelId}
+                  className={`rounded-lg border border-slate-200 p-4 shadow-sm dark:border-slate-700 ${
+                    LEVEL_BADGES[schedule.levelId] ?? ''
+                  }`}
+                >
                   <header className="flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">{level?.name ?? schedule.levelId}</h3>
@@ -259,14 +295,129 @@ export function ConfigPanel() {
                         )
                       }
                       className="self-end rounded border border-slate-300 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-brand hover:text-brand dark:border-slate-600 dark:text-slate-300 dark:hover:border-brand/60 dark:hover:text-brand"
+                      disabled={schedule.administrativeMode === 'none'}
                     >
                       Agregar hora administrativa
                     </button>
                   </div>
+                  <div className="mt-4 grid gap-2 text-sm">
+                    <p className="text-slate-600 dark:text-slate-300">Recreos (minutos entre bloques)</p>
+                    <div className="grid gap-2">
+                      {schedule.breakDurations.length === 0 && (
+                        <p className="rounded border border-dashed border-amber-300 bg-amber-100/40 p-3 text-xs text-amber-700 dark:border-amber-400/60 dark:bg-amber-400/10 dark:text-amber-200">
+                          Agrega la duración de los recreos para que el generador separe los bloques.
+                        </p>
+                      )}
+                      {schedule.breakDurations.map((duration, index) => (
+                        <div key={`${schedule.levelId}-break-${index}`} className="flex flex-wrap items-center gap-3">
+                          <input
+                            type="number"
+                            min={5}
+                            step={5}
+                            value={duration}
+                            onChange={(event) =>
+                              setLevelSchedules((current) =>
+                                current.map((item) =>
+                                  item.levelId === schedule.levelId
+                                    ? {
+                                        ...item,
+                                        breakDurations: item.breakDurations.map((value, idx) =>
+                                          idx === index ? Math.max(5, Number(event.target.value) || 5) : value
+                                        )
+                                      }
+                                    : item
+                                )
+                              )
+                            }
+                            className="w-32 rounded border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-brand focus:outline-none dark:border-slate-600 dark:bg-slate-900 dark:text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setLevelSchedules((current) =>
+                                current.map((item) =>
+                                  item.levelId === schedule.levelId
+                                    ? {
+                                        ...item,
+                                        breakDurations: item.breakDurations.filter((_, idx) => idx !== index)
+                                      }
+                                    : item
+                                )
+                              )
+                            }
+                            className="rounded border border-transparent px-3 py-1 text-xs font-semibold text-rose-500 transition hover:border-rose-300 hover:bg-rose-50 dark:hover:border-rose-400 dark:hover:bg-rose-400/10"
+                          >
+                            Quitar
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLevelSchedules((current) =>
+                          current.map((item) =>
+                            item.levelId === schedule.levelId
+                              ? {
+                                  ...item,
+                                  breakDurations: [...item.breakDurations, 15]
+                                }
+                              : item
+                          )
+                        )
+                      }
+                      className="w-fit rounded border border-amber-300 bg-white px-3 py-1 text-xs font-semibold text-amber-600 transition hover:bg-amber-50 dark:border-amber-400/70 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-400/10"
+                    >
+                      Agregar recreo
+                    </button>
+                  </div>
+                  <div className="mt-4 grid gap-2 text-sm">
+                    <p className="text-slate-600 dark:text-slate-300">Horas administrativas (obligatorio seleccionar una opción)</p>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`administrative-${schedule.levelId}`}
+                          value="none"
+                          checked={schedule.administrativeMode === 'none'}
+                          onChange={() =>
+                            setLevelSchedules((current) =>
+                              current.map((item) =>
+                                item.levelId === schedule.levelId
+                                  ? { ...item, administrativeMode: 'none', administrativeBlocks: [] }
+                                  : item
+                              )
+                            )
+                          }
+                        />
+                        No aplica
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name={`administrative-${schedule.levelId}`}
+                          value="custom"
+                          checked={schedule.administrativeMode === 'custom'}
+                          onChange={() =>
+                            setLevelSchedules((current) =>
+                              current.map((item) =>
+                                item.levelId === schedule.levelId
+                                  ? { ...item, administrativeMode: 'custom' }
+                                  : item
+                              )
+                            )
+                          }
+                        />
+                        Personalizadas
+                      </label>
+                    </div>
+                  </div>
                   <div className="mt-4 grid gap-3">
                     {schedule.administrativeBlocks.length === 0 ? (
                       <p className="rounded border border-dashed border-slate-300 p-3 text-xs text-slate-500 dark:border-slate-600 dark:text-slate-400">
-                        No hay horas administrativas configuradas para este nivel.
+                        {schedule.administrativeMode === 'none'
+                          ? 'Marcaste que este nivel no tiene horas administrativas.'
+                          : 'No hay horas administrativas configuradas para este nivel.'}
                       </p>
                     ) : (
                       schedule.administrativeBlocks.map((block) => (

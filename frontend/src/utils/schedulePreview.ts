@@ -5,15 +5,17 @@ import type { ConfigResponse } from '../services/configService'
 import { FIXED_LEVELS, type CourseData, type SubjectData, type TeacherData } from '../store/useSchedulerData'
 
 export const WORKING_DAYS = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes'] as const
+// Etiquetas utilizadas para identificar bloques especiales en la grilla.
 export const LUNCH_LABEL = 'Hora de almuerzo'
 export const ADMIN_LABEL = 'Horas administrativas'
+export const BREAK_LABEL = 'Recreo'
 
 export interface PreviewCell {
   subject: string
   teacher?: string
   course?: string
   color: string
-  type?: 'class' | 'admin' | 'free' | 'lunch'
+  type?: 'class' | 'admin' | 'free' | 'lunch' | 'break'
 }
 
 export interface PreviewRow {
@@ -80,7 +82,7 @@ export interface BuildPreviewInput {
 }
 
 interface DaySlot {
-  type: 'class' | 'lunch' | 'admin'
+  type: 'class' | 'lunch' | 'admin' | 'break'
   start: number
   end: number
 }
@@ -92,7 +94,7 @@ interface ClassSlotMeta {
 }
 
 interface ScheduleStructureRow {
-  kind: 'class' | 'lunch'
+  kind: 'class' | 'lunch' | 'break'
   time: string
 }
 
@@ -101,6 +103,7 @@ interface TimelineData {
   classSlots: ClassSlotMeta[][]
   structure: ScheduleStructureRow[]
   adminMinutes: number
+  breakMinutes: number
 }
 
 interface SlotAssignment {
@@ -178,10 +181,14 @@ function buildTimeline(course: CourseData, config: ConfigResponse): TimelineData
   const dayEndMinutes = levelSchedule?.endTime
     ? timeToMinutes(levelSchedule.endTime)
     : dayStartMinutes + blockDuration * 8 + lunchDuration
+  const breakDurations = (levelSchedule?.breakDurations ?? [])
+    .map((duration) => Math.max(0, Math.round(Number(duration) || 0)))
+    .filter((duration) => duration > 0)
 
   const perDaySlots: DaySlot[][] = []
   const classSlots: ClassSlotMeta[][] = []
   let adminMinutes = 0
+  let breakMinutes = 0
 
   for (const day of WORKING_DAYS) {
     const administrativeBlocks = levelSchedule?.administrativeBlocks?.filter(
@@ -194,6 +201,7 @@ function buildTimeline(course: CourseData, config: ConfigResponse): TimelineData
     const daySlots: DaySlot[] = []
     const dayClassSlots: ClassSlotMeta[] = []
     let pointer = dayStartMinutes
+    let breakIndex = 0
 
     while (pointer + blockDuration <= dayEndMinutes + 1) {
       const slotEnd = pointer + blockDuration
@@ -219,7 +227,26 @@ function buildTimeline(course: CourseData, config: ConfigResponse): TimelineData
           timeOfDay: determineTimeOfDay(lunchStartMinutes, lunchEndMinutes, pointer, slotEnd)
         })
       }
-      pointer = slotEnd
+      let nextPointer = slotEnd
+      if (type === 'class' && breakDurations.length > 0) {
+        const breakDuration = breakDurations[breakIndex % breakDurations.length]
+        const breakStart = slotEnd
+        const breakEnd = breakStart + breakDuration
+        const overlapsLunch =
+          lunchStartMinutes !== null &&
+          lunchDuration > 0 &&
+          rangesOverlap(breakStart, breakEnd, lunchStartMinutes, lunchEndMinutes ?? lunchStartMinutes)
+        const overlapsAdmin = administrativeRanges.some((range) =>
+          rangesOverlap(breakStart, breakEnd, range.start, range.end)
+        )
+        if (!overlapsLunch && !overlapsAdmin && breakEnd <= dayEndMinutes + 1) {
+          daySlots.push({ type: 'break', start: breakStart, end: breakEnd })
+          breakMinutes += breakDuration
+          breakIndex += 1
+          nextPointer = breakEnd
+        }
+      }
+      pointer = nextPointer
     }
 
     perDaySlots.push(daySlots)
@@ -245,11 +272,11 @@ function buildTimeline(course: CourseData, config: ConfigResponse): TimelineData
   })
 
   const structure: ScheduleStructureRow[] = perDaySlots[0].map((slot) => ({
-    kind: slot.type === 'lunch' ? 'lunch' : 'class',
+    kind: slot.type === 'lunch' ? 'lunch' : slot.type === 'break' ? 'break' : 'class',
     time: minutesToRange(slot.start, slot.end - slot.start)
   }))
 
-  return { perDaySlots, classSlots, structure, adminMinutes }
+  return { perDaySlots, classSlots, structure, adminMinutes, breakMinutes }
 }
 
 function createTeacherCapacities(teachers: TeacherData[], blockDuration: number) {
@@ -424,6 +451,7 @@ function distributeCourse(
 
   const lunchCell: PreviewCell = { subject: LUNCH_LABEL, color: '#f97316', type: 'lunch' }
   const adminCell: PreviewCell = { subject: ADMIN_LABEL, color: '#94a3b8', type: 'admin' }
+  const breakCell: PreviewCell = { subject: BREAK_LABEL, color: '#facc15', type: 'break' }
   const freeCell: PreviewCell = { subject: 'Sin clase', color: '#e2e8f0', type: 'free' }
   const classPointers = timeline.classSlots.map(() => 0)
   const teacherSlots: TeacherSlotRecord[] = []
@@ -434,6 +462,13 @@ function distributeCourse(
         time: row.time,
         kind: 'lunch',
         cells: WORKING_DAYS.map(() => lunchCell)
+      }
+    }
+    if (row.kind === 'break') {
+      return {
+        time: row.time,
+        kind: 'class',
+        cells: WORKING_DAYS.map(() => breakCell)
       }
     }
 
@@ -450,6 +485,9 @@ function distributeCourse(
         }
         if (slot.type === 'lunch') {
           return lunchCell
+        }
+        if (slot.type === 'break') {
+          return breakCell
         }
 
         const pointer = classPointers[dayIndex]
@@ -581,6 +619,13 @@ export function buildSchedulePreview(
           type: 'lunch' as const
         }))
       }
+      if (row.kind === 'break') {
+        return Array.from({ length: WORKING_DAYS.length }, () => ({
+          subject: BREAK_LABEL,
+          color: '#facc15',
+          type: 'break' as const
+        }))
+      }
       return referenceTimeline!.perDaySlots.map((daySlots, dayIndex) => {
         const slot = daySlots[rowIndex]
         if (!slot || slot.type === 'admin') {
@@ -588,6 +633,13 @@ export function buildSchedulePreview(
             subject: ADMIN_LABEL,
             color: '#94a3b8',
             type: 'admin' as const
+          }
+        }
+        if (slot.type === 'break') {
+          return {
+            subject: BREAK_LABEL,
+            color: '#facc15',
+            type: 'break' as const
           }
         }
         return {

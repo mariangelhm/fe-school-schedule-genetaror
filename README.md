@@ -10,27 +10,29 @@ Este repositorio contiene **exclusivamente** el cliente web de School Scheduler,
 - Mantenedores con datos persistidos en el navegador para trabajar sin backend durante las demos y soportar edición completa.
 - Uso de una lista fija de niveles académicos (Parvulario, Básico y Media) compartida entre asignaturas, cursos y docentes.
 - Gestión completa de aulas, cursos, asignaturas y profesores desde el Dashboard con accesos rápidos y tablas actualizadas en vivo.
-- Previsualización de horarios por nivel con pestañas de cursos/profesores, filtros y exportación rápida a PDF.
+- Previsualización de horarios por nivel con pestañas de cursos/profesores, filtros, etiquetas de docentes y exportación profesional a PDF por curso/profesor en orientación horizontal.
 - Distribución automática que respeta preferencia horaria de asignaturas, bloques administrativos y bloque de almuerzo visible en la grilla.
+- Configuración visualmente diferenciada por nivel (Parvulario, Básico y Media) con recreos por nivel, validación de horas administrativas (incluye opción "No aplica") y control del nombre del colegio mostrado en los horarios.
 - Configuraciones de niveles y cargas horarias totalmente desconectadas de feriados/eventos (el mantenedor se concentra en académica pura).
 - Ruteo con `react-router-dom` y componentes reutilizables para paneles, mantenedores y vistas de calendario.
 - Integración prevista con un gateway/API externa protegida con JWT.
 
 ## Configuración dinámica desde el front
 
-- **Ciclos académicos:** define nombre, niveles asociados y hora de término diaria para cada ciclo. Estos valores limitan automáticamente la cantidad de bloques que puede tener un curso por día y semana.
-- **Asignaturas por ciclo:** configura cuántos bloques debe cursar cada ciclo para una asignatura específica y establece límites máximos diarios antes de generar los horarios.
-- **Niveles predefinidos:** las pantallas de asignaturas, cursos, profesores y aulas utilizan siempre los niveles "Parvulario", "Básico" y "Media" para mantener consistencia con el backend y evitar configuraciones incongruentes.
-- **Bloque de almuerzo:** especifica el inicio y duración del almuerzo. El bloque aparece resaltado en las previsualizaciones y se descuenta de la capacidad diaria disponible.
-- **Previsualización por nivel:** antes de confirmar puedes revisar tablas por curso o profesor, filtrar rápidamente y descargar el resultado en PDF.
-- **Preferencias horarias:** cada asignatura puede indicar si prefiere jornada mañana o tarde y el generador intentará respetarlo en la distribución.
+- **Niveles predefinidos:** las pantallas de asignaturas, cursos, profesores y aulas utilizan siempre los niveles "Parvulario", "Básico" y "Media". En la configuración se distinguen con colores y cada uno define su hora de término diaria.
+- **Recreos por nivel:** añade uno o más recreos (en minutos) entre bloques. El generador los respeta en la distribución semanal y se muestran como filas amarillas en las previsualizaciones/exportaciones.
+- **Horas administrativas:** marca "No aplica" o define bloques administrativos por día. Se valida que no se crucen con el almuerzo y es obligatorio seleccionar una de las dos opciones para poder generar horarios.
+- **Bloque de almuerzo:** especifica inicio y duración del almuerzo; aparece resaltado en las tablas y se excluye de la carga académica.
+- **Contrato tiempo completo:** configura cuántas horas semanales representa un contrato full-time y se asignan automáticamente a los profesores con ese tipo de contrato.
+- **Preferencias horarias de asignaturas:** cada asignatura puede indicar si prefiere jornada mañana o tarde y el generador intentará respetarlo en la asignación.
+- **Previsualización enriquecida:** antes de confirmar puedes revisar tablas por curso o profesor, filtrar rápidamente, ver resúmenes (horas clase/administrativas, detalle por asignatura) y descargar un PDF por curso/profesor con encabezado institucional.
 - Todas las configuraciones se guardan en el navegador (localStorage) cuando no hay backend disponible, permitiendo demos sin conexión.
 
 ## Reglas funcionales de los mantenedores
 
-- **Cursos:** cada curso debe tener un aula asignada (no se pueden compartir aulas entre cursos) y su ciclo se calcula automáticamente según la configuración global. Si el curso pertenece al nivel Media, se exige seleccionar un profesor jefe registrado previamente.
+- **Cursos:** cada curso debe tener un aula asignada (no se pueden compartir aulas entre cursos) y su nivel se determina automáticamente según la configuración global. Si el curso pertenece al nivel Media, se exige seleccionar un profesor jefe registrado previamente.
 - **Profesores:** cada docente pertenece a un único nivel, debe indicar la carga horaria semanal y elegir al menos un curso existente. El mantenedor queda bloqueado cuando no hay cursos creados y solo los profesores que imparten asignaturas especiales pueden quedar asociados a más de un curso.
-- **Asignaturas:** definen la carga semanal por ciclo, el límite máximo de bloques diarios y solo pueden registrarse una vez por nivel (no se permiten duplicar nombres en el mismo nivel).
+- **Asignaturas:** definen la carga semanal por nivel, el límite máximo de bloques diarios y solo pueden registrarse una vez por nivel (no se permiten duplicar nombres en el mismo nivel).
 - **Aulas:** se gestionan por nivel para garantizar compatibilidad, no permiten nombres duplicados y cada aula solo puede quedar asociada a un curso a la vez.
 - **Validación de formularios:** todos los campos de texto permiten hasta 50 caracteres, alineados con los requisitos de datos del backend.
 

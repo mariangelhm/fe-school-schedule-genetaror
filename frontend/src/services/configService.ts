@@ -19,10 +19,14 @@ export interface AdministrativeBlock {
   end: string
 }
 
+export type AdministrativeMode = 'none' | 'custom'
+
 export interface LevelScheduleConfig {
   levelId: string
   endTime: string
+  administrativeMode: AdministrativeMode
   administrativeBlocks: AdministrativeBlock[]
+  breakDurations: number[]
 }
 
 const LOCAL_STORAGE_KEY = 'scheduler-config-cache'
@@ -52,17 +56,23 @@ const defaultConfig: Required<
     {
       levelId: 'parvulario',
       endTime: '13:00',
-      administrativeBlocks: []
+      administrativeMode: 'none',
+      administrativeBlocks: [],
+      breakDurations: [20]
     },
     {
       levelId: 'basico',
       endTime: '15:00',
-      administrativeBlocks: []
+      administrativeMode: 'custom',
+      administrativeBlocks: [],
+      breakDurations: [15]
     },
     {
       levelId: 'media',
       endTime: '17:00',
-      administrativeBlocks: []
+      administrativeMode: 'custom',
+      administrativeBlocks: [],
+      breakDurations: [10, 15]
     }
   ]
 }
@@ -102,13 +112,36 @@ function writeLocalConfig(config: ConfigResponse) {
   }
 }
 
+function normaliseBreaks(breakDurations?: number[]) {
+  return (breakDurations ?? [])
+    .map((duration) => Math.max(0, Math.round(Number(duration) || 0)))
+    .filter((duration) => duration > 0)
+}
+
 function mergeWithDefaults(config?: ConfigResponse): ConfigResponse {
   const merged = { ...config }
+
+  const levelSchedules = defaultConfig.levelSchedules.map((defaultSchedule) => {
+    const inputSchedule = merged.levelSchedules?.find(
+      (schedule) => schedule.levelId === defaultSchedule.levelId
+    )
+    const blocks = Array.isArray(inputSchedule?.administrativeBlocks)
+      ? inputSchedule?.administrativeBlocks ?? []
+      : defaultSchedule.administrativeBlocks
+    const breaks = normaliseBreaks(inputSchedule?.breakDurations)
+    return {
+      ...defaultSchedule,
+      ...inputSchedule,
+      administrativeMode: inputSchedule?.administrativeMode ?? defaultSchedule.administrativeMode,
+      administrativeBlocks: blocks,
+      breakDurations: breaks.length ? breaks : defaultSchedule.breakDurations
+    }
+  })
 
   return {
     ...defaultConfig,
     ...merged,
-    levelSchedules: merged?.levelSchedules?.length ? merged.levelSchedules : defaultConfig.levelSchedules,
+    levelSchedules,
     fullTimeWeeklyHours:
       typeof merged?.fullTimeWeeklyHours === 'number'
         ? Math.max(0, merged.fullTimeWeeklyHours)
