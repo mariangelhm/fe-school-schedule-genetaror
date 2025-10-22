@@ -1,6 +1,6 @@
 import httpClient from './httpClient'
 
-export type SubjectType = 'Normal' | 'Especial'
+export type SubjectType = 'Normal' | 'Especial' | (string & {})
 export type SubjectPreferredTime = 'morning' | 'afternoon' | 'any'
 
 export interface SubjectPayload {
@@ -17,22 +17,61 @@ export interface SubjectResponse extends SubjectPayload {
   id: number
 }
 
+interface SubjectApiPayload {
+  name: string
+  level: string
+  weeklyBlocks: number
+  type: SubjectType
+  color: string
+  maxDailyBlocks: number
+  preferredTime: SubjectPreferredTime
+}
+
+interface SubjectApiResponse extends SubjectApiPayload {
+  id: number
+}
+
+function mapToApiPayload(payload: SubjectPayload): SubjectApiPayload {
+  return {
+    name: payload.name,
+    level: payload.levelId,
+    weeklyBlocks: payload.weeklyBlocks,
+    type: payload.type,
+    color: payload.color,
+    maxDailyBlocks: payload.maxDailyBlocks,
+    preferredTime: payload.preferredTime
+  }
+}
+
+function mapFromApiResponse(response: SubjectApiResponse): SubjectResponse {
+  return {
+    id: Number(response.id),
+    name: response.name,
+    levelId: response.level,
+    weeklyBlocks: response.weeklyBlocks,
+    maxDailyBlocks: response.maxDailyBlocks,
+    type: response.type,
+    color: response.color,
+    preferredTime: response.preferredTime
+  }
+}
+
 export async function listSubjects(): Promise<SubjectResponse[]> {
-  const { data } = await httpClient.get<SubjectResponse[]>('subjects')
-  return data
+  const { data } = await httpClient.get<SubjectApiResponse[]>('subjects')
+  return data.map(mapFromApiResponse)
 }
 
 export async function createSubject(payload: SubjectPayload): Promise<SubjectResponse> {
-  const { data } = await httpClient.post<SubjectResponse>('subjects', payload)
-  return data
+  const { data } = await httpClient.post<SubjectApiResponse>('subjects', mapToApiPayload(payload))
+  return mapFromApiResponse(data)
 }
 
 export async function updateSubject(
   id: number,
   payload: SubjectPayload
 ): Promise<SubjectResponse> {
-  const { data } = await httpClient.put<SubjectResponse>(`subjects/${id}`, payload)
-  return data
+  const { data } = await httpClient.put<SubjectApiResponse>(`subjects/${id}`, mapToApiPayload(payload))
+  return mapFromApiResponse(data)
 }
 
 export async function deleteSubject(id: number): Promise<void> {
