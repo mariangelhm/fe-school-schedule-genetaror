@@ -1,5 +1,6 @@
-// Servicio simulado para confirmar la generación. En un escenario real haría
-// la llamada al backend, pero aquí devolvemos una respuesta inmediata.
+// Cliente encargado de generar la tarea de creación de horarios a través del backend.
+import httpClient from './httpClient'
+
 export interface ScheduleSummary {
   generatedCourses: number
   assignedTeachers: number
@@ -12,7 +13,8 @@ export interface GenerationPayload {
   replaceExisting: boolean
 }
 
-// Función que simula la generación y devuelve un resumen vacío.
-export async function generateSchedule(_: GenerationPayload): Promise<ScheduleSummary> {
-  return Promise.resolve({ generatedCourses: 0, assignedTeachers: 0, totalSessions: 0 })
+// Función que envía la solicitud de generación al servicio remoto y retorna el resumen.
+export async function generateSchedule(payload: GenerationPayload): Promise<ScheduleSummary> {
+  const { data } = await httpClient.post<ScheduleSummary>('tasks', payload)
+  return data
 }

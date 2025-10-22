@@ -64,7 +64,7 @@ export function CoursesPage() {
     })
   }, [defaultLevelId, classrooms, mediaTeachers])
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim() || !draft.levelId || !draft.classroomId) {
       setError('Completa todos los campos obligatorios.')
@@ -91,7 +91,9 @@ export function CoursesPage() {
       classroomId: draft.classroomId
     }
 
-    const success = editingId ? updateCourse(editingId, payload) : addCourse(payload)
+    const success = await (editingId
+      ? updateCourse(editingId, payload)
+      : addCourse(payload))
     if (!success) {
       setError('El aula seleccionada ya está asignada a otro curso.')
       return
@@ -119,8 +121,8 @@ export function CoursesPage() {
     setError(null)
   }
 
-  const handleDelete = (id: number) => {
-    removeCourse(id)
+  const handleDelete = async (id: number) => {
+    await removeCourse(id)
     if (editingId === id) {
       handleCancel()
     }

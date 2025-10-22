@@ -18,7 +18,7 @@ export function ClassroomsPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim() || !draft.levelId) {
       return
@@ -29,7 +29,9 @@ export function ClassroomsPage() {
       levelId: draft.levelId
     }
 
-    const success = editingId ? updateClassroom(editingId, payload) : addClassroom(payload)
+    const success = await (editingId
+      ? updateClassroom(editingId, payload)
+      : addClassroom(payload))
     if (!success) {
       setError('Ya existe un aula con ese nombre para este nivel.')
       return
@@ -52,8 +54,8 @@ export function ClassroomsPage() {
     setDraft({ name: '', levelId: levelOptions[0]?.id ?? FIXED_LEVELS[0].id })
   }
 
-  const handleDelete = (id: number) => {
-    removeClassroom(id)
+  const handleDelete = async (id: number) => {
+    await removeClassroom(id)
     if (editingId === id) {
       handleCancel()
     }
