@@ -1,6 +1,6 @@
 // Vista dedicada a mantener las asignaturas: garantiza unicidad por nivel y
 // permite configurar cargas semanales, horarios preferentes y tipo.
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import {
   useSchedulerDataStore,
@@ -41,6 +41,11 @@ export function SubjectsPage() {
   const addSubject = useSchedulerDataStore((state) => state.addSubject)
   const updateSubject = useSchedulerDataStore((state) => state.updateSubject)
   const removeSubject = useSchedulerDataStore((state) => state.removeSubject)
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+
+  useEffect(() => {
+    void loadFromServer({ force: true })
+  }, [loadFromServer])
 
   const levelOptions = useMemo(
     () => FIXED_LEVELS.map((level) => ({ id: level.id, name: level.name })),
@@ -53,7 +58,7 @@ export function SubjectsPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim()) {
       setError('El nombre es obligatorio.')
@@ -70,7 +75,9 @@ export function SubjectsPage() {
       preferredTime: draft.preferredTime
     }
 
-    const success = editingId ? updateSubject(editingId, payload) : addSubject(payload)
+    const success = await (editingId
+      ? updateSubject(editingId, payload)
+      : addSubject(payload))
     if (!success) {
       setError('Ya existe una asignatura con ese nombre en el nivel seleccionado.')
       return
@@ -101,8 +108,8 @@ export function SubjectsPage() {
     setError(null)
   }
 
-  const handleDelete = (id: number) => {
-    removeSubject(id)
+  const handleDelete = async (id: number) => {
+    await removeSubject(id)
     if (editingId === id) {
       handleCancel()
     }

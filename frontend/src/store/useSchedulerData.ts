@@ -3,9 +3,40 @@
 // generador de horarios.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import {
+  createClassroom as apiCreateClassroom,
+  deleteClassroom as apiDeleteClassroom,
+  listClassrooms as apiListClassrooms,
+  updateClassroom as apiUpdateClassroom,
+  type ClassroomResponse
+} from '../services/classroomService'
+import {
+  createCourse as apiCreateCourse,
+  deleteCourse as apiDeleteCourse,
+  listCourses as apiListCourses,
+  updateCourse as apiUpdateCourse,
+  type CourseResponse
+} from '../services/courseService'
+import {
+  createSubject as apiCreateSubject,
+  deleteSubject as apiDeleteSubject,
+  listSubjects as apiListSubjects,
+  updateSubject as apiUpdateSubject,
+  type SubjectPreferredTime as ApiSubjectPreferredTime,
+  type SubjectResponse,
+  type SubjectType as ApiSubjectType
+} from '../services/subjectService'
+import {
+  createTeacher as apiCreateTeacher,
+  deleteTeacher as apiDeleteTeacher,
+  listTeachers as apiListTeachers,
+  updateTeacher as apiUpdateTeacher,
+  type TeacherContractType as ApiTeacherContractType,
+  type TeacherResponse
+} from '../services/teacherService'
 
-type SubjectType = 'Normal' | 'Especial'
-export type SubjectPreferredTime = 'morning' | 'afternoon' | 'any'
+export type SubjectType = ApiSubjectType
+export type SubjectPreferredTime = ApiSubjectPreferredTime
 
 export interface LevelData {
   id: string
@@ -47,7 +78,7 @@ export interface TeacherData {
   contractType: TeacherContractType
 }
 
-export type TeacherContractType = 'full-time' | 'part-time'
+export type TeacherContractType = ApiTeacherContractType
 
 interface SchedulerState {
   levels: LevelData[]
@@ -55,18 +86,20 @@ interface SchedulerState {
   subjects: SubjectData[]
   courses: CourseData[]
   teachers: TeacherData[]
-  addClassroom: (classroom: Omit<ClassroomData, 'id'>) => boolean
-  removeClassroom: (id: number) => void
-  updateClassroom: (id: number, classroom: Omit<ClassroomData, 'id'>) => boolean
-  addSubject: (subject: Omit<SubjectData, 'id'>) => boolean
-  removeSubject: (id: number) => void
-  updateSubject: (id: number, subject: Omit<SubjectData, 'id'>) => boolean
-  addCourse: (course: Omit<CourseData, 'id'>) => boolean
-  removeCourse: (id: number) => void
-  updateCourse: (id: number, course: Omit<CourseData, 'id'>) => boolean
-  addTeacher: (teacher: Omit<TeacherData, 'id'>) => boolean
-  removeTeacher: (id: number) => void
-  updateTeacher: (id: number, teacher: Omit<TeacherData, 'id'>) => boolean
+  hasLoadedFromServer: boolean
+  loadFromServer: (options?: { force?: boolean }) => Promise<void>
+  addClassroom: (classroom: Omit<ClassroomData, 'id'>) => Promise<boolean>
+  removeClassroom: (id: number) => Promise<void>
+  updateClassroom: (id: number, classroom: Omit<ClassroomData, 'id'>) => Promise<boolean>
+  addSubject: (subject: Omit<SubjectData, 'id'>) => Promise<boolean>
+  removeSubject: (id: number) => Promise<void>
+  updateSubject: (id: number, subject: Omit<SubjectData, 'id'>) => Promise<boolean>
+  addCourse: (course: Omit<CourseData, 'id'>) => Promise<boolean>
+  removeCourse: (id: number) => Promise<void>
+  updateCourse: (id: number, course: Omit<CourseData, 'id'>) => Promise<boolean>
+  addTeacher: (teacher: Omit<TeacherData, 'id'>) => Promise<boolean>
+  removeTeacher: (id: number) => Promise<void>
+  updateTeacher: (id: number, teacher: Omit<TeacherData, 'id'>) => Promise<boolean>
 }
 
 export const FIXED_LEVELS: LevelData[] = [
@@ -76,6 +109,60 @@ export const FIXED_LEVELS: LevelData[] = [
 ]
 
 export const DEFAULT_LEVEL_ID = FIXED_LEVELS[0].id
+
+function normaliseLevelId(levelId: string): string {
+  return FIXED_LEVELS.some((level) => level.id === levelId) ? levelId : DEFAULT_LEVEL_ID
+}
+
+function mapClassroomResponse(response: ClassroomResponse): ClassroomData {
+  return {
+    id: Number(response.id),
+    name: response.name,
+    levelId: normaliseLevelId(response.levelId)
+  }
+}
+
+function mapSubjectResponse(response: SubjectResponse): SubjectData {
+  return {
+    id: Number(response.id),
+    name: response.name,
+    levelId: normaliseLevelId(response.levelId),
+    weeklyBlocks: Math.max(1, Number(response.weeklyBlocks) || 1),
+    maxDailyBlocks: Math.max(1, Number(response.maxDailyBlocks) || 1),
+    type: response.type,
+    color: response.color,
+    preferredTime: response.preferredTime
+  }
+}
+
+function mapCourseResponse(response: CourseResponse): CourseData {
+  return {
+    id: Number(response.id),
+    name: response.name,
+    levelId: normaliseLevelId(response.levelId),
+    headTeacherId: typeof response.headTeacherId === 'number' ? response.headTeacherId : null,
+    classroomId: typeof response.classroomId === 'number' ? response.classroomId : null
+  }
+}
+
+function mapTeacherResponse(response: TeacherResponse): TeacherData {
+  const levelId = normaliseLevelId(response.levelId)
+  const subjectIds = Array.isArray(response.subjectIds)
+    ? Array.from(new Set(response.subjectIds.map((value) => Number(value)))).filter((value) => !Number.isNaN(value))
+    : []
+  const courseIds = Array.isArray(response.courseIds)
+    ? Array.from(new Set(response.courseIds.map((value) => Number(value)))).filter((value) => !Number.isNaN(value))
+    : []
+  return {
+    id: Number(response.id),
+    name: response.name,
+    subjectIds,
+    levelId,
+    courseIds,
+    weeklyHours: Math.max(1, Number(response.weeklyHours) || 1),
+    contractType: response.contractType
+  }
+}
 
 const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 'courses' | 'teachers'> = {
   levels: FIXED_LEVELS,
@@ -158,370 +245,411 @@ export const useSchedulerDataStore = create<SchedulerState>()(
   persist(
     (set, get) => ({
       ...defaultState,
+      hasLoadedFromServer: false,
+      loadFromServer: async (options) => {
+        if (get().hasLoadedFromServer && !options?.force) {
+          return
+        }
+        try {
+          const [classrooms, subjects, courses, teachers] = await Promise.all([
+            apiListClassrooms(),
+            apiListSubjects(),
+            apiListCourses(),
+            apiListTeachers()
+          ])
+          set({
+            classrooms: classrooms.map(mapClassroomResponse),
+            subjects: subjects.map(mapSubjectResponse),
+            courses: courses.map(mapCourseResponse),
+            teachers: teachers.map(mapTeacherResponse),
+            hasLoadedFromServer: true
+          })
+        } catch (error) {
+          console.error('No fue posible sincronizar los datos maestros', error)
+          set({ hasLoadedFromServer: true })
+        }
+      },
       // Método que agrega un aula nueva asegurando que no exista otra con el mismo nombre en el nivel.
-      addClassroom: (classroom) => {
-        let success = false
-        const levelId = FIXED_LEVELS.some((level) => level.id === classroom.levelId)
-          ? classroom.levelId
-          : DEFAULT_LEVEL_ID
-        set((state) => {
-          const normalisedName = classroom.name.trim().toLowerCase()
-          const exists = state.classrooms.some(
-            (item) =>
-              item.levelId === levelId && item.name.trim().toLowerCase() === normalisedName
-          )
-          if (exists) {
-            return state
-          }
-          success = true
-          return {
-            classrooms: [
-              { id: Date.now(), name: classroom.name.slice(0, 50), levelId },
-              ...state.classrooms
-            ]
-          }
-        })
-        return success
+      addClassroom: async (classroom) => {
+        const levelId = normaliseLevelId(classroom.levelId)
+        const name = classroom.name.slice(0, 50)
+        const normalisedName = name.trim().toLowerCase()
+        const exists = get().classrooms.some(
+          (item) => item.levelId === levelId && item.name.trim().toLowerCase() === normalisedName
+        )
+        if (exists || !name.trim()) {
+          return false
+        }
+        try {
+          const created = await apiCreateClassroom({ name, levelId })
+          const mapped = mapClassroomResponse(created)
+          set((state) => ({ classrooms: [mapped, ...state.classrooms] }))
+          return true
+        } catch (error) {
+          console.error('No fue posible crear el aula', error)
+          return false
+        }
       },
       // Método que actualiza un aula y mantiene la unicidad por nombre y nivel.
-      updateClassroom: (id, classroom) => {
-        let success = false
-        const levelId = FIXED_LEVELS.some((level) => level.id === classroom.levelId)
-          ? classroom.levelId
-          : DEFAULT_LEVEL_ID
-        set((state) => {
-          const normalisedName = classroom.name.trim().toLowerCase()
-          const exists = state.classrooms.some(
-            (item) =>
-              item.id !== id &&
-              item.levelId === levelId &&
-              item.name.trim().toLowerCase() === normalisedName
-          )
-          if (exists) {
-            return state
-          }
-          success = true
-          return {
-            classrooms: state.classrooms.map((item) =>
-              item.id === id ? { id, name: classroom.name.slice(0, 50), levelId } : item
-            )
-          }
-        })
-        return success
+      updateClassroom: async (id, classroom) => {
+        const levelId = normaliseLevelId(classroom.levelId)
+        const name = classroom.name.slice(0, 50)
+        const normalisedName = name.trim().toLowerCase()
+        const exists = get().classrooms.some(
+          (item) =>
+            item.id !== id &&
+            item.levelId === levelId &&
+            item.name.trim().toLowerCase() === normalisedName
+        )
+        if (exists || !name.trim()) {
+          return false
+        }
+        try {
+          const updated = await apiUpdateClassroom(id, { name, levelId })
+          const mapped = mapClassroomResponse(updated)
+          set((state) => ({
+            classrooms: state.classrooms.map((item) => (item.id === id ? mapped : item))
+          }))
+          return true
+        } catch (error) {
+          console.error('No fue posible actualizar el aula', error)
+          return false
+        }
       },
       // Método que elimina un aula y limpia su referencia en los cursos asociados.
-      removeClassroom: (id) => {
-        set((state) => ({
-          classrooms: state.classrooms.filter((classroom) => classroom.id !== id),
-          courses: state.courses.map((course) =>
-            course.classroomId === id ? { ...course, classroomId: null } : course
-          )
-        }))
+      removeClassroom: async (id) => {
+        try {
+          await apiDeleteClassroom(id)
+          set((state) => ({
+            classrooms: state.classrooms.filter((classroom) => classroom.id !== id),
+            courses: state.courses.map((course) =>
+              course.classroomId === id ? { ...course, classroomId: null } : course
+            )
+          }))
+        } catch (error) {
+          console.error('No fue posible eliminar el aula', error)
+        }
       },
       // Método que registra una asignatura nueva validando duplicados por nivel.
-      addSubject: (subject) => {
-        let success = false
-        const levelId = FIXED_LEVELS.some((level) => level.id === subject.levelId)
-          ? subject.levelId
-          : DEFAULT_LEVEL_ID
-        set((state) => {
-          const normalisedName = subject.name.trim().toLowerCase()
-          const hasConflict = state.subjects.some(
-            (existing) =>
-              existing.levelId === levelId && existing.name.trim().toLowerCase() === normalisedName
-          )
-          if (hasConflict) {
-            return state
-          }
-          success = true
-          return {
-            subjects: [
-              {
-                id: Date.now(),
-                name: subject.name.slice(0, 50),
-                levelId,
-                weeklyBlocks: Math.max(1, Number(subject.weeklyBlocks) || 1),
-                maxDailyBlocks: Math.max(1, Number(subject.maxDailyBlocks) || 1),
-                type: subject.type,
-                color: subject.color,
-                preferredTime: subject.preferredTime ?? 'any'
-              },
-              ...state.subjects
-            ]
-          }
-        })
-        return success
+      addSubject: async (subject) => {
+        const levelId = normaliseLevelId(subject.levelId)
+        const name = subject.name.slice(0, 50)
+        const weeklyBlocks = Math.max(1, Number(subject.weeklyBlocks) || 1)
+        const maxDailyBlocks = Math.max(1, Number(subject.maxDailyBlocks) || 1)
+        const preferredTime: SubjectPreferredTime = subject.preferredTime ?? 'any'
+        const normalisedName = name.trim().toLowerCase()
+        const hasConflict = get().subjects.some(
+          (existing) =>
+            existing.levelId === levelId && existing.name.trim().toLowerCase() === normalisedName
+        )
+        if (hasConflict || !name.trim()) {
+          return false
+        }
+        try {
+          const created = await apiCreateSubject({
+            name,
+            levelId,
+            weeklyBlocks,
+            maxDailyBlocks,
+            type: subject.type,
+            color: subject.color,
+            preferredTime
+          })
+          const mapped = mapSubjectResponse(created)
+          set((state) => ({ subjects: [mapped, ...state.subjects] }))
+          return true
+        } catch (error) {
+          console.error('No fue posible crear la asignatura', error)
+          return false
+        }
       },
       // Método que edita una asignatura y sincroniza las referencias de los profesores.
-      updateSubject: (id, subject) => {
-        let success = false
-        const levelId = FIXED_LEVELS.some((level) => level.id === subject.levelId)
-          ? subject.levelId
-          : DEFAULT_LEVEL_ID
-        set((state) => {
-          const normalisedName = subject.name.trim().toLowerCase()
-          const hasConflict = state.subjects.some(
-            (existing) =>
-              existing.id !== id &&
-              existing.levelId === levelId &&
-              existing.name.trim().toLowerCase() === normalisedName
-          )
-          if (hasConflict) {
-            return state
-          }
-          success = true
-          const updatedSubjects = state.subjects.map((item) =>
-            item.id === id
-              ? {
-                  id,
-                  name: subject.name.slice(0, 50),
-                  levelId,
-                  weeklyBlocks: Math.max(1, Number(subject.weeklyBlocks) || 1),
-                  maxDailyBlocks: Math.max(1, Number(subject.maxDailyBlocks) || 1),
-                  type: subject.type,
-                  color: subject.color,
-                  preferredTime: subject.preferredTime ?? 'any'
+      updateSubject: async (id, subject) => {
+        const levelId = normaliseLevelId(subject.levelId)
+        const name = subject.name.slice(0, 50)
+        const weeklyBlocks = Math.max(1, Number(subject.weeklyBlocks) || 1)
+        const maxDailyBlocks = Math.max(1, Number(subject.maxDailyBlocks) || 1)
+        const preferredTime: SubjectPreferredTime = subject.preferredTime ?? 'any'
+        const normalisedName = name.trim().toLowerCase()
+        const hasConflict = get().subjects.some(
+          (existing) =>
+            existing.id !== id &&
+            existing.levelId === levelId &&
+            existing.name.trim().toLowerCase() === normalisedName
+        )
+        if (hasConflict || !name.trim()) {
+          return false
+        }
+        try {
+          const updated = await apiUpdateSubject(id, {
+            name,
+            levelId,
+            weeklyBlocks,
+            maxDailyBlocks,
+            type: subject.type,
+            color: subject.color,
+            preferredTime
+          })
+          const mapped = mapSubjectResponse(updated)
+          set((state) => {
+            const updatedSubjects = state.subjects.map((item) => (item.id === id ? mapped : item))
+            const remainingSubjectIds = new Set(updatedSubjects.map((item) => item.id))
+            const updatedTeachers = state.teachers
+              .map((teacher) => {
+                const subjectIds = teacher.subjectIds.filter((subjectId) => remainingSubjectIds.has(subjectId))
+                if (subjectIds.length === 0) {
+                  return null
                 }
-              : item
-          )
-          const remainingSubjectIds = new Set(updatedSubjects.map((item) => item.id))
-          const updatedTeachers = state.teachers
-            .map((teacher) => {
-              const subjectIds = teacher.subjectIds.filter((subjectId) => remainingSubjectIds.has(subjectId))
-              if (subjectIds.length === 0) {
-                return null
-              }
-              return { ...teacher, subjectIds }
-            })
-            .filter((teacher: TeacherData | null): teacher is TeacherData => Boolean(teacher))
-          return {
-            subjects: updatedSubjects,
-            teachers: updatedTeachers
-          }
-        })
-        return success
+                return { ...teacher, subjectIds }
+              })
+              .filter((teacher: TeacherData | null): teacher is TeacherData => Boolean(teacher))
+            return {
+              subjects: updatedSubjects,
+              teachers: updatedTeachers
+            }
+          })
+          return true
+        } catch (error) {
+          console.error('No fue posible actualizar la asignatura', error)
+          return false
+        }
       },
       // Método que elimina una asignatura y limpia a los docentes que se quedan sin materias.
-      removeSubject: (id) => {
-        set((state) => {
-          const subjects = state.subjects.filter((subject) => subject.id !== id)
-          const subjectIds = new Set(subjects.map((subject) => subject.id))
-          const teachers = state.teachers
-            .map((teacher) => {
-              const nextSubjectIds = teacher.subjectIds.filter((subjectId) => subjectIds.has(subjectId))
-              if (nextSubjectIds.length === 0) {
-                return null
-              }
-              return { ...teacher, subjectIds: nextSubjectIds }
-            })
-            .filter((teacher: TeacherData | null): teacher is TeacherData => Boolean(teacher))
-          return { subjects, teachers }
-        })
+      removeSubject: async (id) => {
+        try {
+          await apiDeleteSubject(id)
+          set((state) => {
+            const subjects = state.subjects.filter((subject) => subject.id !== id)
+            const subjectIds = new Set(subjects.map((subject) => subject.id))
+            const teachers = state.teachers
+              .map((teacher) => {
+                const nextSubjectIds = teacher.subjectIds.filter((subjectId) => subjectIds.has(subjectId))
+                if (nextSubjectIds.length === 0) {
+                  return null
+                }
+                return { ...teacher, subjectIds: nextSubjectIds }
+              })
+              .filter((teacher: TeacherData | null): teacher is TeacherData => Boolean(teacher))
+            return { subjects, teachers }
+          })
+        } catch (error) {
+          console.error('No fue posible eliminar la asignatura', error)
+        }
       },
       // Método que crea un curso nuevo controlando el uso exclusivo del aula.
-      addCourse: (course) => {
-        let success = false
-        const levelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
-          ? course.levelId
-          : DEFAULT_LEVEL_ID
-        set((state) => {
-          if (
-            course.classroomId !== null &&
-            state.courses.some((existing) => existing.classroomId === course.classroomId)
-          ) {
-            return state
-          }
-          success = true
-          const newCourse: CourseData = {
-            id: Date.now(),
-            name: course.name.slice(0, 50),
+      addCourse: async (course) => {
+        const levelId = normaliseLevelId(course.levelId)
+        const name = course.name.slice(0, 50)
+        const headTeacherId = typeof course.headTeacherId === 'number' ? course.headTeacherId : null
+        const classroomId = typeof course.classroomId === 'number' ? course.classroomId : null
+        if (
+          !name.trim() ||
+          (classroomId !== null &&
+            get().courses.some((existing) => existing.classroomId === classroomId))
+        ) {
+          return false
+        }
+        try {
+          const created = await apiCreateCourse({
+            name,
             levelId,
-            headTeacherId: course.headTeacherId ?? null,
-            classroomId: course.classroomId ?? null
-          }
-          return {
-            courses: [newCourse, ...state.courses]
-          }
-        })
-        return success
+            headTeacherId,
+            classroomId
+          })
+          const mapped = mapCourseResponse(created)
+          set((state) => ({ courses: [mapped, ...state.courses] }))
+          return true
+        } catch (error) {
+          console.error('No fue posible crear el curso', error)
+          return false
+        }
       },
       // Método que actualiza un curso y ajusta a los profesores vinculados.
-      updateCourse: (id, course) => {
-        let success = false
-        const levelId = FIXED_LEVELS.some((level) => level.id === course.levelId)
-          ? course.levelId
-          : DEFAULT_LEVEL_ID
-        set((state) => {
-          if (
-            course.classroomId !== null &&
-            state.courses.some(
-              (existing) => existing.id !== id && existing.classroomId === course.classroomId
-            )
-          ) {
-            return state
-          }
-          success = true
-          const updatedCourses = state.courses.map((item) =>
-            item.id === id
-              ? {
-                  id,
-                  name: course.name.slice(0, 50),
-                  levelId,
-                  headTeacherId: course.headTeacherId ?? null,
-                  classroomId: course.classroomId ?? null
+      updateCourse: async (id, course) => {
+        const levelId = normaliseLevelId(course.levelId)
+        const name = course.name.slice(0, 50)
+        const headTeacherId = typeof course.headTeacherId === 'number' ? course.headTeacherId : null
+        const classroomId = typeof course.classroomId === 'number' ? course.classroomId : null
+        if (
+          !name.trim() ||
+          (classroomId !== null &&
+            get().courses.some(
+              (existing) => existing.id !== id && existing.classroomId === classroomId
+            ))
+        ) {
+          return false
+        }
+        try {
+          const updated = await apiUpdateCourse(id, {
+            name,
+            levelId,
+            headTeacherId,
+            classroomId
+          })
+          const mapped = mapCourseResponse(updated)
+          set((state) => {
+            const updatedCourses = state.courses.map((item) => (item.id === id ? mapped : item))
+            const coursesById = new Map(updatedCourses.map((item) => [item.id, item]))
+            const updatedTeachers = state.teachers
+              .map((teacher) => {
+                if (!teacher.courseIds.includes(id)) {
+                  return teacher
                 }
-              : item
-          )
-          const coursesById = new Map(updatedCourses.map((item) => [item.id, item]))
-          const updatedTeachers = state.teachers
-            .map((teacher) => {
-              if (!teacher.courseIds.includes(id)) {
-                return teacher
-              }
-              const filteredCourseIds = teacher.courseIds.filter((courseId) => {
-                const match = coursesById.get(courseId)
-                return match?.levelId === levelId
+                const filteredCourseIds = teacher.courseIds.filter((courseId) => {
+                  const match = coursesById.get(courseId)
+                  return match?.levelId === levelId
+                })
+                const nextCourseIds = filteredCourseIds.length > 0 ? filteredCourseIds : [id]
+                return {
+                  ...teacher,
+                  levelId,
+                  courseIds: Array.from(new Set(nextCourseIds))
+                }
               })
-              const nextCourseIds = filteredCourseIds.length > 0 ? filteredCourseIds : [id]
-              return {
-                ...teacher,
-                levelId,
-                courseIds: Array.from(new Set(nextCourseIds))
-              }
-            })
-            .filter((teacher) => teacher.courseIds.length > 0)
-          return {
-            courses: updatedCourses,
-            teachers: updatedTeachers
-          }
-        })
-        return success
+              .filter((teacher) => teacher.courseIds.length > 0)
+            return {
+              courses: updatedCourses,
+              teachers: updatedTeachers
+            }
+          })
+          return true
+        } catch (error) {
+          console.error('No fue posible actualizar el curso', error)
+          return false
+        }
       },
       // Método que elimina un curso y reacomoda los docentes restantes.
-      removeCourse: (id) => {
-        set((state) => {
-          const remainingCourses = state.courses.filter((course) => course.id !== id)
-          const coursesById = new Map(remainingCourses.map((course) => [course.id, course]))
-          const teachers = state.teachers
-            .map((teacher) => {
-              const courseIds = teacher.courseIds.filter((courseId) => courseId !== id)
-              if (courseIds.length === 0) {
-                return null
-              }
-              const referenceCourse = coursesById.get(courseIds[0])
-              return {
-                ...teacher,
-                courseIds,
-                levelId: referenceCourse?.levelId ?? teacher.levelId
-              }
-            })
-            .filter((teacher: TeacherData | null): teacher is TeacherData => Boolean(teacher))
-          return {
-            courses: remainingCourses,
-            teachers
-          }
-        })
+      removeCourse: async (id) => {
+        try {
+          await apiDeleteCourse(id)
+          set((state) => {
+            const remainingCourses = state.courses.filter((course) => course.id !== id)
+            const coursesById = new Map(remainingCourses.map((course) => [course.id, course]))
+            const teachers = state.teachers
+              .map((teacher) => {
+                const courseIds = teacher.courseIds.filter((courseId) => courseId !== id)
+                if (courseIds.length === 0) {
+                  return null
+                }
+                const referenceCourse = coursesById.get(courseIds[0])
+                return {
+                  ...teacher,
+                  courseIds,
+                  levelId: referenceCourse?.levelId ?? teacher.levelId
+                }
+              })
+              .filter((teacher: TeacherData | null): teacher is TeacherData => Boolean(teacher))
+            return {
+              courses: remainingCourses,
+              teachers
+            }
+          })
+        } catch (error) {
+          console.error('No fue posible eliminar el curso', error)
+        }
       },
       // Método que incorpora un profesor respetando nivel, cursos asignables y tipo de asignatura.
-      addTeacher: (teacher) => {
-        let success = false
-        const levelId = FIXED_LEVELS.some((level) => level.id === teacher.levelId)
-          ? teacher.levelId
-          : DEFAULT_LEVEL_ID
-        set((state) => {
-          const subjectMap = new Map(state.subjects.map((subject) => [subject.id, subject]))
-          const subjectIds = Array.from(
-            new Set(
-              (teacher.subjectIds ?? []).filter((subjectId) => {
-                const match = subjectMap.get(subjectId)
-                return match ? match.levelId === levelId : false
-              })
-            )
+      addTeacher: async (teacher) => {
+        const levelId = normaliseLevelId(teacher.levelId)
+        const name = teacher.name.slice(0, 50)
+        const state = get()
+        const subjectMap = new Map(state.subjects.map((subject) => [subject.id, subject]))
+        const subjectIds = Array.from(
+          new Set(
+            (teacher.subjectIds ?? []).filter((subjectId) => {
+              const match = subjectMap.get(subjectId)
+              return match ? match.levelId === levelId : false
+            })
           )
-          const courseIds = Array.from(
-            new Set(
-              (teacher.courseIds ?? []).filter((courseId) => {
-                const course = state.courses.find((item) => item.id === courseId)
-                return course ? course.levelId === levelId : false
-              })
-            )
+        )
+        const courseIds = Array.from(
+          new Set(
+            (teacher.courseIds ?? []).filter((courseId) => {
+              const course = state.courses.find((item) => item.id === courseId)
+              return course ? course.levelId === levelId : false
+            })
           )
-          const teachesSpecial = subjectIds.some((subjectId) => subjectMap.get(subjectId)?.type === 'Especial')
-          const resolvedCourseIds = teachesSpecial ? courseIds : courseIds.slice(0, 1)
-          if (!teacher.name.trim() || subjectIds.length === 0 || resolvedCourseIds.length === 0) {
-            return state
-          }
-          success = true
-          return {
-            teachers: [
-              {
-                id: Date.now(),
-                name: teacher.name.slice(0, 50),
-                subjectIds,
-                levelId,
-                courseIds: resolvedCourseIds,
-                weeklyHours: Math.max(1, Number(teacher.weeklyHours) || 1),
-                contractType: teacher.contractType
-              },
-              ...state.teachers
-            ]
-          }
-        })
-        return success
+        )
+        const teachesSpecial = subjectIds.some((subjectId) => subjectMap.get(subjectId)?.type === 'Especial')
+        const resolvedCourseIds = teachesSpecial ? courseIds : courseIds.slice(0, 1)
+        const weeklyHours = Math.max(1, Number(teacher.weeklyHours) || 1)
+        if (!name.trim() || subjectIds.length === 0 || resolvedCourseIds.length === 0) {
+          return false
+        }
+        try {
+          const created = await apiCreateTeacher({
+            name,
+            levelId,
+            subjectIds,
+            courseIds: resolvedCourseIds,
+            weeklyHours,
+            contractType: teacher.contractType
+          })
+          const mapped = mapTeacherResponse(created)
+          set((current) => ({ teachers: [mapped, ...current.teachers] }))
+          return true
+        } catch (error) {
+          console.error('No fue posible crear el profesor', error)
+          return false
+        }
       },
       // Método que actualiza un profesor conservando las reglas de asignación especial.
-      updateTeacher: (id, teacher) => {
-        let success = false
-        const levelId = FIXED_LEVELS.some((level) => level.id === teacher.levelId)
-          ? teacher.levelId
-          : DEFAULT_LEVEL_ID
-        set((state) => {
-          const subjectMap = new Map(state.subjects.map((subject) => [subject.id, subject]))
-          const subjectIds = Array.from(
-            new Set(
-              (teacher.subjectIds ?? []).filter((subjectId) => {
-                const match = subjectMap.get(subjectId)
-                return match ? match.levelId === levelId : false
-              })
-            )
+      updateTeacher: async (id, teacher) => {
+        const levelId = normaliseLevelId(teacher.levelId)
+        const name = teacher.name.slice(0, 50)
+        const state = get()
+        const subjectMap = new Map(state.subjects.map((subject) => [subject.id, subject]))
+        const subjectIds = Array.from(
+          new Set(
+            (teacher.subjectIds ?? []).filter((subjectId) => {
+              const match = subjectMap.get(subjectId)
+              return match ? match.levelId === levelId : false
+            })
           )
-          const courseIds = Array.from(
-            new Set(
-              (teacher.courseIds ?? []).filter((courseId) => {
-                const course = state.courses.find((item) => item.id === courseId)
-                return course ? course.levelId === levelId : false
-              })
-            )
+        )
+        const courseIds = Array.from(
+          new Set(
+            (teacher.courseIds ?? []).filter((courseId) => {
+              const course = state.courses.find((item) => item.id === courseId)
+              return course ? course.levelId === levelId : false
+            })
           )
-          const teachesSpecial = subjectIds.some((subjectId) => subjectMap.get(subjectId)?.type === 'Especial')
-          const resolvedCourseIds = teachesSpecial ? courseIds : courseIds.slice(0, 1)
-          if (!teacher.name.trim() || subjectIds.length === 0 || resolvedCourseIds.length === 0) {
-            return state
-          }
-          success = true
-          return {
-            teachers: state.teachers.map((item) =>
-              item.id === id
-                ? {
-                    id,
-                    name: teacher.name.slice(0, 50),
-                    subjectIds,
-                    levelId,
-                    courseIds: resolvedCourseIds,
-                    weeklyHours: Math.max(1, Number(teacher.weeklyHours) || 1),
-                    contractType: teacher.contractType
-                  }
-                : item
-            )
-          }
-        })
-        return success
+        )
+        const teachesSpecial = subjectIds.some((subjectId) => subjectMap.get(subjectId)?.type === 'Especial')
+        const resolvedCourseIds = teachesSpecial ? courseIds : courseIds.slice(0, 1)
+        const weeklyHours = Math.max(1, Number(teacher.weeklyHours) || 1)
+        if (!name.trim() || subjectIds.length === 0 || resolvedCourseIds.length === 0) {
+          return false
+        }
+        try {
+          const updated = await apiUpdateTeacher(id, {
+            name,
+            levelId,
+            subjectIds,
+            courseIds: resolvedCourseIds,
+            weeklyHours,
+            contractType: teacher.contractType
+          })
+          const mapped = mapTeacherResponse(updated)
+          set((current) => ({
+            teachers: current.teachers.map((item) => (item.id === id ? mapped : item))
+          }))
+          return true
+        } catch (error) {
+          console.error('No fue posible actualizar el profesor', error)
+          return false
+        }
       },
       // Método que elimina a un profesor del catálogo.
-      removeTeacher: (id) => {
-        set((state) => ({
-          teachers: state.teachers.filter((teacher) => teacher.id !== id)
-        }))
+      removeTeacher: async (id) => {
+        try {
+          await apiDeleteTeacher(id)
+          set((state) => ({
+            teachers: state.teachers.filter((teacher) => teacher.id !== id)
+          }))
+        } catch (error) {
+          console.error('No fue posible eliminar el profesor', error)
+        }
       }
     }),
     {
@@ -732,7 +860,8 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             classrooms,
             subjects,
             courses: courses.length > 0 ? courses : defaultState.courses,
-            teachers: teachers.length > 0 ? teachers : defaultState.teachers
+            teachers: teachers.length > 0 ? teachers : defaultState.teachers,
+            hasLoadedFromServer: false
           } as SchedulerState
         } catch (error) {
           console.warn('No fue posible migrar el estado anterior, se usarán valores por defecto.', error)
@@ -741,11 +870,11 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             classrooms: defaultState.classrooms,
             subjects: defaultState.subjects,
             courses: defaultState.courses,
-            teachers: defaultState.teachers
+            teachers: defaultState.teachers,
+            hasLoadedFromServer: false
           }
         }
       }
     }
   )
 )
-export type { SubjectType }

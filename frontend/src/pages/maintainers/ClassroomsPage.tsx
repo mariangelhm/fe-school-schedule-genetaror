@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import { FIXED_LEVELS, useSchedulerDataStore, type ClassroomData } from '../../store/useSchedulerData'
 
@@ -11,6 +11,11 @@ export function ClassroomsPage() {
   const updateClassroom = useSchedulerDataStore((state) => state.updateClassroom)
   const removeClassroom = useSchedulerDataStore((state) => state.removeClassroom)
   const levels = useSchedulerDataStore((state) => state.levels)
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+
+  useEffect(() => {
+    void loadFromServer({ force: true })
+  }, [loadFromServer])
 
   const levelOptions = useMemo(() => levels.filter((level) => FIXED_LEVELS.some((item) => item.id === level.id)), [levels])
 
@@ -18,7 +23,7 @@ export function ClassroomsPage() {
   const [editingId, setEditingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim() || !draft.levelId) {
       return
@@ -29,7 +34,9 @@ export function ClassroomsPage() {
       levelId: draft.levelId
     }
 
-    const success = editingId ? updateClassroom(editingId, payload) : addClassroom(payload)
+    const success = await (editingId
+      ? updateClassroom(editingId, payload)
+      : addClassroom(payload))
     if (!success) {
       setError('Ya existe un aula con ese nombre para este nivel.')
       return
@@ -52,8 +59,8 @@ export function ClassroomsPage() {
     setDraft({ name: '', levelId: levelOptions[0]?.id ?? FIXED_LEVELS[0].id })
   }
 
-  const handleDelete = (id: number) => {
-    removeClassroom(id)
+  const handleDelete = async (id: number) => {
+    await removeClassroom(id)
     if (editingId === id) {
       handleCancel()
     }

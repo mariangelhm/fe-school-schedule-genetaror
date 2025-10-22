@@ -56,6 +56,7 @@ export function TeachersPage() {
   const addTeacher = useSchedulerDataStore((state) => state.addTeacher)
   const updateTeacher = useSchedulerDataStore((state) => state.updateTeacher)
   const removeTeacher = useSchedulerDataStore((state) => state.removeTeacher)
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
 
   const { data: config } = useQuery(['config'], fetchConfig)
   const fullTimeHours = Math.max(1, config?.fullTimeWeeklyHours ?? 38)
@@ -113,6 +114,10 @@ export function TeachersPage() {
     })
   }, [fullTimeHours])
 
+  useEffect(() => {
+    void loadFromServer({ force: true })
+  }, [loadFromServer])
+
   const availableCourses = levelCourseMap.get(draft.levelId) ?? []
   const availableSubjects = subjectsData.filter((subject) => subject.levelId === draft.levelId)
   const teachesSpecial = draft.subjectIds.some((subjectId) => subjectTypeMap.get(subjectId) === 'Especial')
@@ -122,7 +127,7 @@ export function TeachersPage() {
     setDraft((current) => ({ ...current, courseIds: selectedCourses }))
   }, [teachesSpecial, availableCourses.length])
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim()) {
       setError('El nombre es obligatorio.')
@@ -146,7 +151,9 @@ export function TeachersPage() {
       contractType: draft.contractType
     }
 
-    const success = editingId ? updateTeacher(editingId, payload) : addTeacher(payload)
+    const success = await (editingId
+      ? updateTeacher(editingId, payload)
+      : addTeacher(payload))
     if (!success) {
       setError('No fue posible guardar el profesor. Verifica los datos e intenta nuevamente.')
       return
@@ -176,8 +183,8 @@ export function TeachersPage() {
     setError(null)
   }
 
-  const handleDelete = (id: number) => {
-    removeTeacher(id)
+  const handleDelete = async (id: number) => {
+    await removeTeacher(id)
     if (editingId === id) {
       handleCancel()
     }
