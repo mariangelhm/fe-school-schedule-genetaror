@@ -44,7 +44,7 @@ export function SubjectsPage() {
   const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
 
   useEffect(() => {
-    void loadFromServer({ force: true })
+    void loadFromServer({ force: true, resources: ['subjects'] })
   }, [loadFromServer])
 
   const levelOptions = useMemo(

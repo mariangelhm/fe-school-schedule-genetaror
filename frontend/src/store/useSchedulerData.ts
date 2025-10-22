@@ -35,6 +35,26 @@ import {
   type TeacherResponse
 } from '../services/teacherService'
 
+type SchedulerResource = 'classrooms' | 'subjects' | 'courses' | 'teachers'
+
+const ALL_RESOURCES: SchedulerResource[] = ['classrooms', 'subjects', 'courses', 'teachers']
+
+type ResourceResponseMap = {
+  classrooms: ClassroomResponse
+  subjects: SubjectResponse
+  courses: CourseResponse
+  teachers: TeacherResponse
+}
+
+function createDefaultLoadedResources(): Record<SchedulerResource, boolean> {
+  return {
+    classrooms: false,
+    subjects: false,
+    courses: false,
+    teachers: false
+  }
+}
+
 export type SubjectType = ApiSubjectType
 export type SubjectPreferredTime = ApiSubjectPreferredTime
 
@@ -87,7 +107,8 @@ interface SchedulerState {
   courses: CourseData[]
   teachers: TeacherData[]
   hasLoadedFromServer: boolean
-  loadFromServer: (options?: { force?: boolean }) => Promise<void>
+  loadedResources: Record<SchedulerResource, boolean>
+  loadFromServer: (options?: { force?: boolean; resources?: SchedulerResource[] }) => Promise<void>
   addClassroom: (classroom: Omit<ClassroomData, 'id'>) => Promise<boolean>
   removeClassroom: (id: number) => Promise<void>
   updateClassroom: (id: number, classroom: Omit<ClassroomData, 'id'>) => Promise<boolean>
@@ -246,27 +267,79 @@ export const useSchedulerDataStore = create<SchedulerState>()(
     (set, get) => ({
       ...defaultState,
       hasLoadedFromServer: false,
+      loadedResources: createDefaultLoadedResources(),
       loadFromServer: async (options) => {
-        if (get().hasLoadedFromServer && !options?.force) {
+        const requested = options?.resources?.length ? options.resources : ALL_RESOURCES
+        const uniqueResources = Array.from(new Set(requested))
+        const { loadedResources } = get()
+        const resourcesToLoad = options?.force
+          ? uniqueResources
+          : uniqueResources.filter((resource) => !loadedResources[resource])
+
+        if (resourcesToLoad.length === 0) {
           return
         }
+
+        const fetchers: {
+          [K in SchedulerResource]: () => Promise<ResourceResponseMap[K][]>
+        } = {
+          classrooms: apiListClassrooms,
+          subjects: apiListSubjects,
+          courses: apiListCourses,
+          teachers: apiListTeachers
+        }
+
         try {
-          const [classrooms, subjects, courses, teachers] = await Promise.all([
-            apiListClassrooms(),
-            apiListSubjects(),
-            apiListCourses(),
-            apiListTeachers()
-          ])
-          set({
-            classrooms: classrooms.map(mapClassroomResponse),
-            subjects: subjects.map(mapSubjectResponse),
-            courses: courses.map(mapCourseResponse),
-            teachers: teachers.map(mapTeacherResponse),
-            hasLoadedFromServer: true
+          const results = await Promise.all(
+            resourcesToLoad.map(async (resource) => {
+              const data = await fetchers[resource]()
+              return { resource, data }
+            })
+          )
+
+          set((state) => {
+            const nextLoaded = { ...state.loadedResources }
+            const updates: Partial<SchedulerState> = {}
+
+            for (const { resource, data } of results) {
+              nextLoaded[resource] = true
+              switch (resource) {
+                case 'classrooms':
+                  updates.classrooms = (data as ClassroomResponse[]).map(mapClassroomResponse)
+                  break
+                case 'subjects':
+                  updates.subjects = (data as SubjectResponse[]).map(mapSubjectResponse)
+                  break
+                case 'courses':
+                  updates.courses = (data as CourseResponse[]).map(mapCourseResponse)
+                  break
+                case 'teachers':
+                  updates.teachers = (data as TeacherResponse[]).map(mapTeacherResponse)
+                  break
+              }
+            }
+
+            const hasLoadedFromServer = ALL_RESOURCES.every((resource) => nextLoaded[resource])
+
+            return {
+              ...updates,
+              loadedResources: nextLoaded,
+              hasLoadedFromServer
+            }
           })
         } catch (error) {
           console.error('No fue posible sincronizar los datos maestros', error)
-          set({ hasLoadedFromServer: true })
+          set((state) => {
+            const nextLoaded = { ...state.loadedResources }
+            resourcesToLoad.forEach((resource) => {
+              nextLoaded[resource] = true
+            })
+            const hasLoadedFromServer = ALL_RESOURCES.every((resource) => nextLoaded[resource])
+            return {
+              loadedResources: nextLoaded,
+              hasLoadedFromServer
+            }
+          })
         }
       },
       // Método que agrega un aula nueva asegurando que no exista otra con el mismo nombre en el nivel.
@@ -654,7 +727,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
     }),
     {
       name: 'scheduler-data-store',
-      version: 8,
+      version: 9,
       // Función que migra datos antiguos del almacenamiento local a la forma actual del store.
       migrate: (persistedState: any) => {
         if (!persistedState) {
@@ -861,7 +934,8 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             subjects,
             courses: courses.length > 0 ? courses : defaultState.courses,
             teachers: teachers.length > 0 ? teachers : defaultState.teachers,
-            hasLoadedFromServer: false
+            hasLoadedFromServer: false,
+            loadedResources: createDefaultLoadedResources()
           } as SchedulerState
         } catch (error) {
           console.warn('No fue posible migrar el estado anterior, se usarán valores por defecto.', error)
@@ -871,7 +945,8 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             subjects: defaultState.subjects,
             courses: defaultState.courses,
             teachers: defaultState.teachers,
-            hasLoadedFromServer: false
+            hasLoadedFromServer: false,
+            loadedResources: createDefaultLoadedResources()
           }
         }
       }

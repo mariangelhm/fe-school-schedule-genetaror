@@ -115,7 +115,10 @@ export function TeachersPage() {
   }, [fullTimeHours])
 
   useEffect(() => {
-    void loadFromServer({ force: true })
+    void loadFromServer({
+      force: true,
+      resources: ['teachers', 'subjects', 'courses']
+    })
   }, [loadFromServer])
 
   const availableCourses = levelCourseMap.get(draft.levelId) ?? []

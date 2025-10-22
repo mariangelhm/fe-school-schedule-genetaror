@@ -14,7 +14,7 @@ export function ClassroomsPage() {
   const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
 
   useEffect(() => {
-    void loadFromServer({ force: true })
+    void loadFromServer({ force: true, resources: ['classrooms'] })
   }, [loadFromServer])
 
   const levelOptions = useMemo(() => levels.filter((level) => FIXED_LEVELS.some((item) => item.id === level.id)), [levels])

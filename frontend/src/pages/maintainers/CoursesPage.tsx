@@ -34,7 +34,10 @@ export function CoursesPage() {
   const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
 
   useEffect(() => {
-    void loadFromServer({ force: true })
+    void loadFromServer({
+      force: true,
+      resources: ['courses', 'classrooms', 'teachers']
+    })
   }, [loadFromServer])
 
   const levelMap = useMemo(() => new Map(levels.map((level) => [level.id, level.name])), [levels])
