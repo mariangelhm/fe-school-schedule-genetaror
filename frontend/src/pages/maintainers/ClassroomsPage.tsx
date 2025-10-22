@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import { FIXED_LEVELS, useSchedulerDataStore, type ClassroomData } from '../../store/useSchedulerData'
 
@@ -11,6 +11,11 @@ export function ClassroomsPage() {
   const updateClassroom = useSchedulerDataStore((state) => state.updateClassroom)
   const removeClassroom = useSchedulerDataStore((state) => state.removeClassroom)
   const levels = useSchedulerDataStore((state) => state.levels)
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+
+  useEffect(() => {
+    void loadFromServer({ force: true })
+  }, [loadFromServer])
 
   const levelOptions = useMemo(() => levels.filter((level) => FIXED_LEVELS.some((item) => item.id === level.id)), [levels])
 

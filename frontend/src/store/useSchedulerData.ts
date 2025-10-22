@@ -87,7 +87,7 @@ interface SchedulerState {
   courses: CourseData[]
   teachers: TeacherData[]
   hasLoadedFromServer: boolean
-  loadFromServer: () => Promise<void>
+  loadFromServer: (options?: { force?: boolean }) => Promise<void>
   addClassroom: (classroom: Omit<ClassroomData, 'id'>) => Promise<boolean>
   removeClassroom: (id: number) => Promise<void>
   updateClassroom: (id: number, classroom: Omit<ClassroomData, 'id'>) => Promise<boolean>
@@ -246,8 +246,8 @@ export const useSchedulerDataStore = create<SchedulerState>()(
     (set, get) => ({
       ...defaultState,
       hasLoadedFromServer: false,
-      loadFromServer: async () => {
-        if (get().hasLoadedFromServer) {
+      loadFromServer: async (options) => {
+        if (get().hasLoadedFromServer && !options?.force) {
           return
         }
         try {

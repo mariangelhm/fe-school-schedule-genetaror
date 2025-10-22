@@ -56,6 +56,7 @@ export function TeachersPage() {
   const addTeacher = useSchedulerDataStore((state) => state.addTeacher)
   const updateTeacher = useSchedulerDataStore((state) => state.updateTeacher)
   const removeTeacher = useSchedulerDataStore((state) => state.removeTeacher)
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
 
   const { data: config } = useQuery(['config'], fetchConfig)
   const fullTimeHours = Math.max(1, config?.fullTimeWeeklyHours ?? 38)
@@ -112,6 +113,10 @@ export function TeachersPage() {
       return current
     })
   }, [fullTimeHours])
+
+  useEffect(() => {
+    void loadFromServer({ force: true })
+  }, [loadFromServer])
 
   const availableCourses = levelCourseMap.get(draft.levelId) ?? []
   const availableSubjects = subjectsData.filter((subject) => subject.levelId === draft.levelId)

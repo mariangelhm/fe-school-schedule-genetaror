@@ -31,6 +31,11 @@ export function CoursesPage() {
   const addCourse = useSchedulerDataStore((state) => state.addCourse)
   const updateCourse = useSchedulerDataStore((state) => state.updateCourse)
   const removeCourse = useSchedulerDataStore((state) => state.removeCourse)
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+
+  useEffect(() => {
+    void loadFromServer({ force: true })
+  }, [loadFromServer])
 
   const levelMap = useMemo(() => new Map(levels.map((level) => [level.id, level.name])), [levels])
   const defaultLevelId = levels[0]?.id ?? DEFAULT_LEVEL_ID

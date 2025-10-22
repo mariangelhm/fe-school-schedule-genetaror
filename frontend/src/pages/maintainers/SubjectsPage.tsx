@@ -1,6 +1,6 @@
 // Vista dedicada a mantener las asignaturas: garantiza unicidad por nivel y
 // permite configurar cargas semanales, horarios preferentes y tipo.
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import {
   useSchedulerDataStore,
@@ -41,6 +41,11 @@ export function SubjectsPage() {
   const addSubject = useSchedulerDataStore((state) => state.addSubject)
   const updateSubject = useSchedulerDataStore((state) => state.updateSubject)
   const removeSubject = useSchedulerDataStore((state) => state.removeSubject)
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+
+  useEffect(() => {
+    void loadFromServer({ force: true })
+  }, [loadFromServer])
 
   const levelOptions = useMemo(
     () => FIXED_LEVELS.map((level) => ({ id: level.id, name: level.name })),
