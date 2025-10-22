@@ -31,6 +31,14 @@ export function CoursesPage() {
   const addCourse = useSchedulerDataStore((state) => state.addCourse)
   const updateCourse = useSchedulerDataStore((state) => state.updateCourse)
   const removeCourse = useSchedulerDataStore((state) => state.removeCourse)
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+
+  useEffect(() => {
+    void loadFromServer({
+      force: true,
+      resources: ['courses', 'classrooms', 'teachers']
+    })
+  }, [loadFromServer])
 
   const levelMap = useMemo(() => new Map(levels.map((level) => [level.id, level.name])), [levels])
   const defaultLevelId = levels[0]?.id ?? DEFAULT_LEVEL_ID
@@ -64,7 +72,7 @@ export function CoursesPage() {
     })
   }, [defaultLevelId, classrooms, mediaTeachers])
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim() || !draft.levelId || !draft.classroomId) {
       setError('Completa todos los campos obligatorios.')
@@ -91,7 +99,9 @@ export function CoursesPage() {
       classroomId: draft.classroomId
     }
 
-    const success = editingId ? updateCourse(editingId, payload) : addCourse(payload)
+    const success = await (editingId
+      ? updateCourse(editingId, payload)
+      : addCourse(payload))
     if (!success) {
       setError('El aula seleccionada ya está asignada a otro curso.')
       return
@@ -119,8 +129,8 @@ export function CoursesPage() {
     setError(null)
   }
 
-  const handleDelete = (id: number) => {
-    removeCourse(id)
+  const handleDelete = async (id: number) => {
+    await removeCourse(id)
     if (editingId === id) {
       handleCancel()
     }
