@@ -122,7 +122,7 @@ export function TeachersPage() {
     setDraft((current) => ({ ...current, courseIds: selectedCourses }))
   }, [teachesSpecial, availableCourses.length])
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim()) {
       setError('El nombre es obligatorio.')
@@ -146,7 +146,9 @@ export function TeachersPage() {
       contractType: draft.contractType
     }
 
-    const success = editingId ? updateTeacher(editingId, payload) : addTeacher(payload)
+    const success = await (editingId
+      ? updateTeacher(editingId, payload)
+      : addTeacher(payload))
     if (!success) {
       setError('No fue posible guardar el profesor. Verifica los datos e intenta nuevamente.')
       return
@@ -176,8 +178,8 @@ export function TeachersPage() {
     setError(null)
   }
 
-  const handleDelete = (id: number) => {
-    removeTeacher(id)
+  const handleDelete = async (id: number) => {
+    await removeTeacher(id)
     if (editingId === id) {
       handleCancel()
     }
