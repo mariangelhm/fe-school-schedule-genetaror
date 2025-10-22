@@ -1,6 +1,6 @@
 // Este módulo encapsula la lectura y escritura de la configuración global
 // empleada por el frontend para simular la respuesta de un backend.
-import axios from 'axios'
+import httpClient from './httpClient'
 
 export interface ConfigResponse {
   schoolName?: string
@@ -212,7 +212,7 @@ function mergeWithDefaults(config?: ConfigResponse): ConfigResponse {
 // Función que obtiene la configuración combinando almacenamiento local y valores por defecto.
 export async function fetchConfig(): Promise<ConfigResponse> {
   try {
-    const { data } = await axios.get<ConfigResponse>('config')
+    const { data } = await httpClient.get<ConfigResponse>('config')
     const merged = mergeWithDefaults(data)
     writeLocalConfig(merged)
     return merged
@@ -236,7 +236,7 @@ interface UpdateConfigPayload {
 // Función que guarda la configuración y devuelve el estado normalizado.
 export async function updateConfig(payload: UpdateConfigPayload): Promise<ConfigResponse> {
   try {
-    const { data } = await axios.put<ConfigResponse>('config', payload)
+    const { data } = await httpClient.put<ConfigResponse>('config', payload)
     const merged = mergeWithDefaults(data)
     writeLocalConfig(merged)
     return merged
