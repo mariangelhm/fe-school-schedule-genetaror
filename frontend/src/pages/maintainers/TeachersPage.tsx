@@ -57,6 +57,8 @@ export function TeachersPage() {
   const updateTeacher = useSchedulerDataStore((state) => state.updateTeacher)
   const removeTeacher = useSchedulerDataStore((state) => state.removeTeacher)
   const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+  const teacherStatus = useSchedulerDataStore((state) => state.resourceStatus.teachers)
+  const teachersLoaded = useSchedulerDataStore((state) => state.loadedResources.teachers)
 
   const { data: config } = useQuery(['config'], fetchConfig)
   const fullTimeHours = Math.max(1, config?.fullTimeWeeklyHours ?? 38)
@@ -84,6 +86,7 @@ export function TeachersPage() {
   const [draft, setDraft] = useState<TeacherDraft>(() => buildEmptyDraft(defaultLevelId, fullTimeHours))
   const [editingId, setEditingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const isLoadingTeachers = teacherStatus.loading || (!teacherStatus.error && !teachersLoaded)
 
   useEffect(() => {
     setDraft((current) => {
@@ -266,67 +269,82 @@ export function TeachersPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {teachers.map((teacher) => {
-                const teacherCourses = teacher.courseIds
-                  .map((courseId) => courses.find((course) => course.id === courseId)?.name)
-                  .filter(Boolean)
-                const levelName = levelNameMap.get(teacher.levelId) ?? teacher.levelId
-                const subjectNames = teacher.subjectIds
-                  .map((subjectId) => subjectNameMap.get(subjectId))
-                  .filter(Boolean)
-                const contractLabel = teacher.contractType === 'full-time' ? 'Tiempo completo' : 'Tiempo parcial'
-                return (
-                  <tr key={teacher.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
-                    <td className="px-4 py-3 font-medium">{teacher.name}</td>
-                    <td className="px-4 py-3">{levelName}</td>
-                    <td className="px-4 py-3">
-                      <ul className="list-disc pl-4">
-                        {subjectNames.map((subject) => (
-                          <li key={`${teacher.id}-${subject}`}>{subject}</li>
-                        ))}
-                      </ul>
-                    </td>
-                    <td className="px-4 py-3">
-                      {teacherCourses.length > 0 ? (
-                        <ul className="list-disc pl-4">
-                          {teacherCourses.map((courseName) => (
-                            <li key={`${teacher.id}-${courseName}`}>{courseName}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        'Sin cursos'
-                      )}
-                    </td>
-                    <td className="px-4 py-3">{contractLabel}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-3">
-                        <button
-                          className="text-sm text-slate-500 transition hover:text-brand"
-                          type="button"
-                          onClick={() => handleEdit(teacher)}
-                          disabled={!hasCourses}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          className="text-sm text-rose-500 transition hover:text-rose-600"
-                          type="button"
-                          onClick={() => handleDelete(teacher.id)}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-              {teachers.length === 0 && (
+              {isLoadingTeachers && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                    Cargando profesores...
+                  </td>
+                </tr>
+              )}
+              {!isLoadingTeachers && teacherStatus.error && (
+                <tr>
+                  <td colSpan={6} className="px-4 py-6 text-center text-rose-500 dark:text-rose-400">
+                    {teacherStatus.error}
+                  </td>
+                </tr>
+              )}
+              {!isLoadingTeachers && !teacherStatus.error && teachers.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay profesores registrados.
                   </td>
                 </tr>
               )}
+              {!isLoadingTeachers && !teacherStatus.error &&
+                teachers.map((teacher) => {
+                  const teacherCourses = teacher.courseIds
+                    .map((courseId) => courses.find((course) => course.id === courseId)?.name)
+                    .filter(Boolean)
+                  const levelName = levelNameMap.get(teacher.levelId) ?? teacher.levelId
+                  const subjectNames = teacher.subjectIds
+                    .map((subjectId) => subjectNameMap.get(subjectId))
+                    .filter(Boolean)
+                  const contractLabel = teacher.contractType === 'full-time' ? 'Tiempo completo' : 'Tiempo parcial'
+                  return (
+                    <tr key={teacher.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
+                      <td className="px-4 py-3 font-medium">{teacher.name}</td>
+                      <td className="px-4 py-3">{levelName}</td>
+                      <td className="px-4 py-3">
+                        <ul className="list-disc pl-4">
+                          {subjectNames.map((subject) => (
+                            <li key={`${teacher.id}-${subject}`}>{subject}</li>
+                          ))}
+                        </ul>
+                      </td>
+                      <td className="px-4 py-3">
+                        {teacherCourses.length > 0 ? (
+                          <ul className="list-disc pl-4">
+                            {teacherCourses.map((courseName) => (
+                              <li key={`${teacher.id}-${courseName}`}>{courseName}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          'Sin cursos'
+                        )}
+                      </td>
+                      <td className="px-4 py-3">{contractLabel}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-3">
+                          <button
+                            className="text-sm text-slate-500 transition hover:text-brand"
+                            type="button"
+                            onClick={() => handleEdit(teacher)}
+                            disabled={!hasCourses}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className="text-sm text-rose-500 transition hover:text-rose-600"
+                            type="button"
+                            onClick={() => handleDelete(teacher.id)}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
             </tbody>
           </table>
         </div>

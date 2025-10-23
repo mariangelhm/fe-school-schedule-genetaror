@@ -46,12 +46,33 @@ type ResourceResponseMap = {
   teachers: TeacherResponse
 }
 
+type ResourceStatus = {
+  loading: boolean
+  error: string | null
+}
+
+const RESOURCE_ERROR_MESSAGES: Record<SchedulerResource, string> = {
+  classrooms: 'No fue posible cargar las aulas. Intenta nuevamente.',
+  subjects: 'No fue posible cargar las asignaturas. Intenta nuevamente.',
+  courses: 'No fue posible cargar los cursos. Intenta nuevamente.',
+  teachers: 'No fue posible cargar los profesores. Intenta nuevamente.'
+}
+
 function createDefaultLoadedResources(): Record<SchedulerResource, boolean> {
   return {
     classrooms: false,
     subjects: false,
     courses: false,
     teachers: false
+  }
+}
+
+function createDefaultResourceStatus(): Record<SchedulerResource, ResourceStatus> {
+  return {
+    classrooms: { loading: false, error: null },
+    subjects: { loading: false, error: null },
+    courses: { loading: false, error: null },
+    teachers: { loading: false, error: null }
   }
 }
 
@@ -108,6 +129,7 @@ interface SchedulerState {
   teachers: TeacherData[]
   hasLoadedFromServer: boolean
   loadedResources: Record<SchedulerResource, boolean>
+  resourceStatus: Record<SchedulerResource, ResourceStatus>
   loadFromServer: (options?: { force?: boolean; resources?: SchedulerResource[] }) => Promise<void>
   addClassroom: (classroom: Omit<ClassroomData, 'id'>) => Promise<boolean>
   removeClassroom: (id: number) => Promise<void>
@@ -268,6 +290,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
       ...defaultState,
       hasLoadedFromServer: false,
       loadedResources: createDefaultLoadedResources(),
+      resourceStatus: createDefaultResourceStatus(),
       loadFromServer: async (options) => {
         const requested = options?.resources?.length ? options.resources : ALL_RESOURCES
         const uniqueResources = Array.from(new Set(requested))
@@ -280,6 +303,14 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           return
         }
 
+        set((state) => {
+          const nextStatus = { ...state.resourceStatus }
+          resourcesToLoad.forEach((resource) => {
+            nextStatus[resource] = { loading: true, error: null }
+          })
+          return { resourceStatus: nextStatus }
+        })
+
         const fetchers: {
           [K in SchedulerResource]: () => Promise<ResourceResponseMap[K][]>
         } = {
@@ -289,58 +320,66 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           teachers: apiListTeachers
         }
 
-        try {
-          const results = await Promise.all(
-            resourcesToLoad.map(async (resource) => {
-              const data = await fetchers[resource]()
-              return { resource, data }
-            })
-          )
+        const settled = await Promise.allSettled(
+          resourcesToLoad.map(async (resource) => {
+            const data = await fetchers[resource]()
+            return { resource, data }
+          })
+        )
 
-          set((state) => {
-            const nextLoaded = { ...state.loadedResources }
-            const updates: Partial<SchedulerState> = {}
+        settled.forEach((result, index) => {
+          if (result.status === 'rejected') {
+            const resource = resourcesToLoad[index]
+            console.error(`No fue posible sincronizar el recurso ${resource}`, result.reason)
+          }
+        })
 
-            for (const { resource, data } of results) {
+        set((state) => {
+          const nextLoaded = { ...state.loadedResources }
+          const nextStatus = { ...state.resourceStatus }
+          const updates: Partial<SchedulerState> = {}
+
+          settled.forEach((result, index) => {
+            const resource = resourcesToLoad[index]
+            if (!resource) {
+              return
+            }
+
+            if (result.status === 'fulfilled') {
               nextLoaded[resource] = true
+              nextStatus[resource] = { loading: false, error: null }
               switch (resource) {
                 case 'classrooms':
-                  updates.classrooms = (data as ClassroomResponse[]).map(mapClassroomResponse)
+                  updates.classrooms = (result.value.data as ClassroomResponse[]).map(mapClassroomResponse)
                   break
                 case 'subjects':
-                  updates.subjects = (data as SubjectResponse[]).map(mapSubjectResponse)
+                  updates.subjects = (result.value.data as SubjectResponse[]).map(mapSubjectResponse)
                   break
                 case 'courses':
-                  updates.courses = (data as CourseResponse[]).map(mapCourseResponse)
+                  updates.courses = (result.value.data as CourseResponse[]).map(mapCourseResponse)
                   break
                 case 'teachers':
-                  updates.teachers = (data as TeacherResponse[]).map(mapTeacherResponse)
+                  updates.teachers = (result.value.data as TeacherResponse[]).map(mapTeacherResponse)
                   break
               }
-            }
-
-            const hasLoadedFromServer = ALL_RESOURCES.every((resource) => nextLoaded[resource])
-
-            return {
-              ...updates,
-              loadedResources: nextLoaded,
-              hasLoadedFromServer
+            } else {
+              nextLoaded[resource] = false
+              nextStatus[resource] = {
+                loading: false,
+                error: RESOURCE_ERROR_MESSAGES[resource]
+              }
             }
           })
-        } catch (error) {
-          console.error('No fue posible sincronizar los datos maestros', error)
-          set((state) => {
-            const nextLoaded = { ...state.loadedResources }
-            resourcesToLoad.forEach((resource) => {
-              nextLoaded[resource] = true
-            })
-            const hasLoadedFromServer = ALL_RESOURCES.every((resource) => nextLoaded[resource])
-            return {
-              loadedResources: nextLoaded,
-              hasLoadedFromServer
-            }
-          })
-        }
+
+          const hasLoadedFromServer = ALL_RESOURCES.every((resource) => nextLoaded[resource])
+
+          return {
+            ...updates,
+            loadedResources: nextLoaded,
+            resourceStatus: nextStatus,
+            hasLoadedFromServer
+          }
+        })
       },
       // Método que agrega un aula nueva asegurando que no exista otra con el mismo nombre en el nivel.
       addClassroom: async (classroom) => {
@@ -357,6 +396,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           const created = await apiCreateClassroom({ name, levelId })
           const mapped = mapClassroomResponse(created)
           set((state) => ({ classrooms: [mapped, ...state.classrooms] }))
+          await get().loadFromServer({ force: true, resources: ['classrooms'] })
           return true
         } catch (error) {
           console.error('No fue posible crear el aula', error)
@@ -430,6 +470,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           })
           const mapped = mapSubjectResponse(created)
           set((state) => ({ subjects: [mapped, ...state.subjects] }))
+          await get().loadFromServer({ force: true, resources: ['subjects'] })
           return true
         } catch (error) {
           console.error('No fue posible crear la asignatura', error)
@@ -531,6 +572,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           })
           const mapped = mapCourseResponse(created)
           set((state) => ({ courses: [mapped, ...state.courses] }))
+          await get().loadFromServer({ force: true, resources: ['courses'] })
           return true
         } catch (error) {
           console.error('No fue posible crear el curso', error)
@@ -660,6 +702,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
           })
           const mapped = mapTeacherResponse(created)
           set((current) => ({ teachers: [mapped, ...current.teachers] }))
+          await get().loadFromServer({ force: true, resources: ['teachers'] })
           return true
         } catch (error) {
           console.error('No fue posible crear el profesor', error)
@@ -727,7 +770,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
     }),
     {
       name: 'scheduler-data-store',
-      version: 9,
+      version: 10,
       // Función que migra datos antiguos del almacenamiento local a la forma actual del store.
       migrate: (persistedState: any) => {
         if (!persistedState) {
@@ -935,7 +978,8 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             courses: courses.length > 0 ? courses : defaultState.courses,
             teachers: teachers.length > 0 ? teachers : defaultState.teachers,
             hasLoadedFromServer: false,
-            loadedResources: createDefaultLoadedResources()
+            loadedResources: createDefaultLoadedResources(),
+            resourceStatus: createDefaultResourceStatus()
           } as SchedulerState
         } catch (error) {
           console.warn('No fue posible migrar el estado anterior, se usarán valores por defecto.', error)
@@ -946,7 +990,8 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             courses: defaultState.courses,
             teachers: defaultState.teachers,
             hasLoadedFromServer: false,
-            loadedResources: createDefaultLoadedResources()
+            loadedResources: createDefaultLoadedResources(),
+            resourceStatus: createDefaultResourceStatus()
           }
         }
       }

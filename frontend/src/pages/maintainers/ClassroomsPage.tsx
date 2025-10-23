@@ -12,12 +12,16 @@ export function ClassroomsPage() {
   const removeClassroom = useSchedulerDataStore((state) => state.removeClassroom)
   const levels = useSchedulerDataStore((state) => state.levels)
   const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+  const classroomStatus = useSchedulerDataStore((state) => state.resourceStatus.classrooms)
+  const classroomsLoaded = useSchedulerDataStore((state) => state.loadedResources.classrooms)
 
   useEffect(() => {
     void loadFromServer({ force: true, resources: ['classrooms'] })
   }, [loadFromServer])
 
   const levelOptions = useMemo(() => levels.filter((level) => FIXED_LEVELS.some((item) => item.id === level.id)), [levels])
+
+  const isLoading = classroomStatus.loading || (!classroomStatus.error && !classroomsLoaded)
 
   const [draft, setDraft] = useState<ClassroomDraft>({ name: '', levelId: levelOptions[0]?.id ?? FIXED_LEVELS[0].id })
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -82,40 +86,55 @@ export function ClassroomsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {classrooms.map((classroom) => {
-                const levelName = levelOptions.find((level) => level.id === classroom.levelId)?.name ?? classroom.levelId
-                return (
-                  <tr key={classroom.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
-                    <td className="px-4 py-3 font-medium">{classroom.name}</td>
-                    <td className="px-4 py-3">{levelName}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-3">
-                        <button
-                          className="text-sm text-slate-500 transition hover:text-brand"
-                          type="button"
-                          onClick={() => handleEdit(classroom)}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          className="text-sm text-rose-500 transition hover:text-rose-600"
-                          type="button"
-                          onClick={() => handleDelete(classroom.id)}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-              {classrooms.length === 0 && (
+              {isLoading && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                    Cargando aulas...
+                  </td>
+                </tr>
+              )}
+              {!isLoading && classroomStatus.error && (
+                <tr>
+                  <td colSpan={3} className="px-4 py-6 text-center text-rose-500 dark:text-rose-400">
+                    {classroomStatus.error}
+                  </td>
+                </tr>
+              )}
+              {!isLoading && !classroomStatus.error && classrooms.length === 0 && (
                 <tr>
                   <td colSpan={3} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay aulas registradas.
                   </td>
                 </tr>
               )}
+              {!isLoading && !classroomStatus.error &&
+                classrooms.map((classroom) => {
+                  const levelName = levelOptions.find((level) => level.id === classroom.levelId)?.name ?? classroom.levelId
+                  return (
+                    <tr key={classroom.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
+                      <td className="px-4 py-3 font-medium">{classroom.name}</td>
+                      <td className="px-4 py-3">{levelName}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-3">
+                          <button
+                            className="text-sm text-slate-500 transition hover:text-brand"
+                            type="button"
+                            onClick={() => handleEdit(classroom)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className="text-sm text-rose-500 transition hover:text-rose-600"
+                            type="button"
+                            onClick={() => handleDelete(classroom.id)}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
             </tbody>
           </table>
         </div>
