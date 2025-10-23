@@ -15,7 +15,7 @@ import {
 interface TeacherDraft {
   name: string
   levelId: string
-  subjectIds: number[]
+  subjectIds: string[]
   courseIds: number[]
   weeklyHours: number
   contractType: 'full-time' | 'part-time'
@@ -71,7 +71,7 @@ export function TeachersPage() {
   }, [courses, levels])
 
   const subjectTypeMap = useMemo(
-    () => new Map<number, SubjectType>(subjectsData.map((subject) => [subject.id, subject.type])),
+    () => new Map<string, SubjectType>(subjectsData.map((subject) => [subject.id, subject.type])),
     [subjectsData]
   )
 
@@ -212,7 +212,7 @@ export function TeachersPage() {
     }))
   }
 
-  const toggleSubject = (subjectId: number, checked: boolean) => {
+  const toggleSubject = (subjectId: string, checked: boolean) => {
     setDraft((current) => {
       const nextSubjectIds = checked
         ? Array.from(new Set([...current.subjectIds, subjectId]))

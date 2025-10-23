@@ -14,7 +14,7 @@ export interface SubjectPayload {
 }
 
 export interface SubjectResponse extends SubjectPayload {
-  id: number
+  id: string
 }
 
 interface SubjectApiPayload {
@@ -28,7 +28,8 @@ interface SubjectApiPayload {
 }
 
 interface SubjectApiResponse extends SubjectApiPayload {
-  id: number
+  _id?: string
+  id?: string | number
 }
 
 function mapToApiPayload(payload: SubjectPayload): SubjectApiPayload {
@@ -44,8 +45,12 @@ function mapToApiPayload(payload: SubjectPayload): SubjectApiPayload {
 }
 
 function mapFromApiResponse(response: SubjectApiResponse): SubjectResponse {
+  const identifier =
+    (response._id && `${response._id}`.trim()) ||
+    (typeof response.id === 'number' || typeof response.id === 'string' ? `${response.id}` : '') ||
+    `${Date.now()}`
   return {
-    id: Number(response.id),
+    id: identifier,
     name: response.name,
     levelId: response.level,
     weeklyBlocks: response.weeklyBlocks,
@@ -67,13 +72,16 @@ export async function createSubject(payload: SubjectPayload): Promise<SubjectRes
 }
 
 export async function updateSubject(
-  id: number,
+  id: string,
   payload: SubjectPayload
 ): Promise<SubjectResponse> {
-  const { data } = await httpClient.put<SubjectApiResponse>(`subjects/${id}`, mapToApiPayload(payload))
+  const { data } = await httpClient.put<SubjectApiResponse>(
+    `subjects/${encodeURIComponent(id)}`,
+    mapToApiPayload(payload)
+  )
   return mapFromApiResponse(data)
 }
 
-export async function deleteSubject(id: number): Promise<void> {
-  await httpClient.delete(`subjects/${id}`)
+export async function deleteSubject(id: string): Promise<void> {
+  await httpClient.delete(`subjects/${encodeURIComponent(id)}`)
 }

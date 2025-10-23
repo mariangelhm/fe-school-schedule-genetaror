@@ -4,7 +4,7 @@ export type TeacherContractType = 'full-time' | 'part-time'
 
 export interface TeacherPayload {
   name: string
-  subjectIds: number[]
+  subjectIds: string[]
   levelId: string
   courseIds: number[]
   weeklyHours: number

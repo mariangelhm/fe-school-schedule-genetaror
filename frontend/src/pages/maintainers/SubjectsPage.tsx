@@ -58,7 +58,7 @@ export function SubjectsPage() {
   const isLoadingSubjects = subjectStatus.loading || (!subjectStatus.error && !subjectsLoaded)
 
   const [draft, setDraft] = useState<SubjectDraft>(() => createEmptyDraft(defaultLevel))
-  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -111,7 +111,7 @@ export function SubjectsPage() {
     setError(null)
   }
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     await removeSubject(id)
     if (editingId === id) {
       handleCancel()

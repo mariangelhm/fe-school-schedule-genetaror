@@ -85,7 +85,7 @@ export interface LevelData {
 }
 
 export interface SubjectData {
-  id: number
+  id: string
   name: string
   levelId: string
   weeklyBlocks: number
@@ -112,7 +112,7 @@ export interface CourseData {
 export interface TeacherData {
   id: number
   name: string
-  subjectIds: number[]
+  subjectIds: string[]
   levelId: string
   courseIds: number[]
   weeklyHours: number
@@ -135,8 +135,8 @@ interface SchedulerState {
   removeClassroom: (id: number) => Promise<void>
   updateClassroom: (id: number, classroom: Omit<ClassroomData, 'id'>) => Promise<boolean>
   addSubject: (subject: Omit<SubjectData, 'id'>) => Promise<boolean>
-  removeSubject: (id: number) => Promise<void>
-  updateSubject: (id: number, subject: Omit<SubjectData, 'id'>) => Promise<boolean>
+  removeSubject: (id: string) => Promise<void>
+  updateSubject: (id: string, subject: Omit<SubjectData, 'id'>) => Promise<boolean>
   addCourse: (course: Omit<CourseData, 'id'>) => Promise<boolean>
   removeCourse: (id: number) => Promise<void>
   updateCourse: (id: number, course: Omit<CourseData, 'id'>) => Promise<boolean>
@@ -167,7 +167,7 @@ function mapClassroomResponse(response: ClassroomResponse): ClassroomData {
 
 function mapSubjectResponse(response: SubjectResponse): SubjectData {
   return {
-    id: Number(response.id),
+    id: response.id,
     name: response.name,
     levelId: normaliseLevelId(response.levelId),
     weeklyBlocks: Math.max(1, Number(response.weeklyBlocks) || 1),
@@ -191,7 +191,7 @@ function mapCourseResponse(response: CourseResponse): CourseData {
 function mapTeacherResponse(response: TeacherResponse): TeacherData {
   const levelId = normaliseLevelId(response.levelId)
   const subjectIds = Array.isArray(response.subjectIds)
-    ? Array.from(new Set(response.subjectIds.map((value) => Number(value)))).filter((value) => !Number.isNaN(value))
+    ? Array.from(new Set(response.subjectIds.map((value) => String(value))))
     : []
   const courseIds = Array.isArray(response.courseIds)
     ? Array.from(new Set(response.courseIds.map((value) => Number(value)))).filter((value) => !Number.isNaN(value))
@@ -216,7 +216,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
   ],
   subjects: [
     {
-      id: 1,
+      id: '1',
       name: 'Lenguaje',
       levelId: 'basico',
       weeklyBlocks: 10,
@@ -226,7 +226,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
       preferredTime: 'morning'
     },
     {
-      id: 2,
+      id: '2',
       name: 'Matemática',
       levelId: 'basico',
       weeklyBlocks: 9,
@@ -236,7 +236,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
       preferredTime: 'morning'
     },
     {
-      id: 3,
+      id: '3',
       name: 'Música',
       levelId: 'media',
       weeklyBlocks: 4,
@@ -266,7 +266,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
     {
       id: 1,
       name: 'Ana Torres',
-      subjectIds: [1],
+      subjectIds: ['1'],
       levelId: 'basico',
       courseIds: [1],
       weeklyHours: 38,
@@ -275,7 +275,7 @@ const defaultState: Pick<SchedulerState, 'levels' | 'classrooms' | 'subjects' | 
     {
       id: 2,
       name: 'Luis Gómez',
-      subjectIds: [3],
+      subjectIds: ['3'],
       levelId: 'media',
       courseIds: [2],
       weeklyHours: 18,
@@ -494,8 +494,12 @@ export const useSchedulerDataStore = create<SchedulerState>()(
         if (hasConflict || !name.trim()) {
           return false
         }
+        const current = get().subjects.find((item) => item.id === id)
+        if (!current) {
+          return false
+        }
         try {
-          const updated = await apiUpdateSubject(id, {
+          const updated = await apiUpdateSubject(current.id, {
             name,
             levelId,
             weeklyBlocks,
@@ -530,8 +534,12 @@ export const useSchedulerDataStore = create<SchedulerState>()(
       },
       // Método que elimina una asignatura y limpia a los docentes que se quedan sin materias.
       removeSubject: async (id) => {
+        const subject = get().subjects.find((item) => item.id === id)
+        if (!subject) {
+          return
+        }
         try {
-          await apiDeleteSubject(id)
+          await apiDeleteSubject(subject.id)
           set((state) => {
             const subjects = state.subjects.filter((subject) => subject.id !== id)
             const subjectIds = new Set(subjects.map((subject) => subject.id))
@@ -828,7 +836,7 @@ export const useSchedulerDataStore = create<SchedulerState>()(
 
           const legacySubjects = Array.isArray(persistedState.subjects) ? persistedState.subjects : []
           const subjects: SubjectData[] = []
-          const subjectLookup = new Map<string, number>()
+          const subjectLookup = new Map<string, string>()
 
           legacySubjects.forEach((subject: any, index: number) => {
             const name = `${subject?.name ?? 'Asignatura'}`.slice(0, 50)
@@ -851,7 +859,13 @@ export const useSchedulerDataStore = create<SchedulerState>()(
             const color = `${subject?.color ?? '#2563eb'}`
 
             levelIds.forEach((levelId, offset) => {
-              const id = (typeof subject?.id === 'number' ? subject.id : Date.now() + index) + offset
+              const baseId =
+                typeof subject?.id === 'string'
+                  ? subject.id
+                  : typeof subject?.id === 'number'
+                  ? `${subject.id}`
+                  : `${Date.now() + index}`
+              const id = offset === 0 ? baseId : `${baseId}-${offset}`
               const entry: SubjectData = {
                 id,
                 name,
@@ -905,14 +919,14 @@ export const useSchedulerDataStore = create<SchedulerState>()(
                 .map((subjectName) => {
                   const key = `${subjectName.toLowerCase()}|${levelId}`
                   if (subjectLookup.has(key)) {
-                    return subjectLookup.get(key) as number
+                    return subjectLookup.get(key) as string
                   }
                   const anyLevelMatch = subjects.find(
                     (subject) => subject.name.toLowerCase() === subjectName.toLowerCase()
                   )
                   return anyLevelMatch?.id
                 })
-                .filter((id): id is number => typeof id === 'number')
+                .filter((id): id is string => typeof id === 'string')
 
               if (!name.trim() || subjectIds.length === 0) {
                 return null
