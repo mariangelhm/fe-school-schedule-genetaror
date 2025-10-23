@@ -1,6 +1,6 @@
 // Este componente centraliza la definición de rutas y aplica los ajustes visuales
 // globales (tema, nombre del colegio) que se obtienen desde la configuración
-// persistida en localStorage o simulada por axios.
+// persistida en localStorage o recuperada desde el servicio remoto.
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useQuery } from 'react-query'
@@ -14,6 +14,7 @@ import { SubjectsPage } from './pages/maintainers/SubjectsPage'
 import { CoursesPage } from './pages/maintainers/CoursesPage'
 import { TeachersPage } from './pages/maintainers/TeachersPage'
 import { ClassroomsPage } from './pages/maintainers/ClassroomsPage'
+import { useSchedulerDataStore } from './store/useSchedulerData'
 
 // Componente raíz que orquesta rutas y aplica el tema global.
 export default function App() {
@@ -29,6 +30,14 @@ export default function App() {
       lunchDuration: 60
     }
   })
+
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+  const hasLoadedFromServer = useSchedulerDataStore((state) => state.hasLoadedFromServer)
+  useEffect(() => {
+    if (!hasLoadedFromServer) {
+      void loadFromServer()
+    }
+  }, [hasLoadedFromServer, loadFromServer])
 
   const schoolName = data?.schoolName ?? 'School Scheduler'
   const theme = data?.theme ?? 'dark'

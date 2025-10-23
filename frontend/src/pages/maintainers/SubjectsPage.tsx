@@ -1,6 +1,6 @@
 // Vista dedicada a mantener las asignaturas: garantiza unicidad por nivel y
 // permite configurar cargas semanales, horarios preferentes y tipo.
-import { FormEvent, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { MaintenanceLayout } from '../../components/MaintenanceLayout'
 import {
   useSchedulerDataStore,
@@ -41,6 +41,13 @@ export function SubjectsPage() {
   const addSubject = useSchedulerDataStore((state) => state.addSubject)
   const updateSubject = useSchedulerDataStore((state) => state.updateSubject)
   const removeSubject = useSchedulerDataStore((state) => state.removeSubject)
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+  const subjectStatus = useSchedulerDataStore((state) => state.resourceStatus.subjects)
+  const subjectsLoaded = useSchedulerDataStore((state) => state.loadedResources.subjects)
+
+  useEffect(() => {
+    void loadFromServer({ force: true, resources: ['subjects'] })
+  }, [loadFromServer])
 
   const levelOptions = useMemo(
     () => FIXED_LEVELS.map((level) => ({ id: level.id, name: level.name })),
@@ -48,12 +55,13 @@ export function SubjectsPage() {
   )
   const levelNames = useMemo(() => new Map(levels.map((level) => [level.id, level.name])), [levels])
   const defaultLevel = levelOptions[0]?.id ?? DEFAULT_LEVEL_ID
+  const isLoadingSubjects = subjectStatus.loading || (!subjectStatus.error && !subjectsLoaded)
 
   const [draft, setDraft] = useState<SubjectDraft>(() => createEmptyDraft(defaultLevel))
-  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim()) {
       setError('El nombre es obligatorio.')
@@ -70,7 +78,9 @@ export function SubjectsPage() {
       preferredTime: draft.preferredTime
     }
 
-    const success = editingId ? updateSubject(editingId, payload) : addSubject(payload)
+    const success = await (editingId
+      ? updateSubject(editingId, payload)
+      : addSubject(payload))
     if (!success) {
       setError('Ya existe una asignatura con ese nombre en el nivel seleccionado.')
       return
@@ -101,8 +111,8 @@ export function SubjectsPage() {
     setError(null)
   }
 
-  const handleDelete = (id: number) => {
-    removeSubject(id)
+  const handleDelete = async (id: string) => {
+    await removeSubject(id)
     if (editingId === id) {
       handleCancel()
     }
@@ -128,55 +138,70 @@ export function SubjectsPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {subjects.map((subject) => {
-                const levelName = levelNames.get(subject.levelId) ?? subject.levelId
-                return (
-                  <tr key={subject.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className="h-3 w-3 rounded-full" style={{ backgroundColor: subject.color }} aria-hidden="true" />
-                        {subject.name}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">{levelName}</td>
-                    <td className="px-4 py-3">{subject.weeklyBlocks}</td>
-                    <td className="px-4 py-3">{subject.maxDailyBlocks}</td>
-                    <td className="px-4 py-3">{subject.type}</td>
-                    <td className="px-4 py-3">
-                      {subject.preferredTime === 'morning'
-                        ? 'Mañana'
-                        : subject.preferredTime === 'afternoon'
-                        ? 'Tarde'
-                        : 'Indistinto'}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-3">
-                        <button
-                          className="text-sm text-slate-500 transition hover:text-brand"
-                          type="button"
-                          onClick={() => handleEdit(subject)}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          className="text-sm text-rose-500 transition hover:text-rose-600"
-                          type="button"
-                          onClick={() => handleDelete(subject.id)}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-              {subjects.length === 0 && (
+              {isLoadingSubjects && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                    Cargando asignaturas...
+                  </td>
+                </tr>
+              )}
+              {!isLoadingSubjects && subjectStatus.error && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-6 text-center text-rose-500 dark:text-rose-400">
+                    {subjectStatus.error}
+                  </td>
+                </tr>
+              )}
+              {!isLoadingSubjects && !subjectStatus.error && subjects.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay asignaturas registradas.
                   </td>
                 </tr>
               )}
+              {!isLoadingSubjects && !subjectStatus.error &&
+                subjects.map((subject) => {
+                  const levelName = levelNames.get(subject.levelId) ?? subject.levelId
+                  return (
+                    <tr key={subject.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <span className="h-3 w-3 rounded-full" style={{ backgroundColor: subject.color }} aria-hidden="true" />
+                          {subject.name}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">{levelName}</td>
+                      <td className="px-4 py-3">{subject.weeklyBlocks}</td>
+                      <td className="px-4 py-3">{subject.maxDailyBlocks}</td>
+                      <td className="px-4 py-3">{subject.type}</td>
+                      <td className="px-4 py-3">
+                        {subject.preferredTime === 'morning'
+                          ? 'Mañana'
+                          : subject.preferredTime === 'afternoon'
+                          ? 'Tarde'
+                          : 'Indistinto'}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-3">
+                          <button
+                            className="text-sm text-slate-500 transition hover:text-brand"
+                            type="button"
+                            onClick={() => handleEdit(subject)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className="text-sm text-rose-500 transition hover:text-rose-600"
+                            type="button"
+                            onClick={() => handleDelete(subject.id)}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
             </tbody>
           </table>
         </div>

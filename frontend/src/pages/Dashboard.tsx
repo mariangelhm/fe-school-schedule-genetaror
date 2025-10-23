@@ -128,7 +128,7 @@ function QuickAccessCard({ to, label, count }: QuickAccessCardProps) {
 
 interface DataCardProps {
   title: string
-  items: { id: number; primary: string; secondary: string }[]
+  items: { id: string | number; primary: string; secondary: string }[]
   emptyMessage: string
   footerLink: { to: string; label: string }
 }

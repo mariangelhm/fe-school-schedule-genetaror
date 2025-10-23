@@ -39,7 +39,7 @@ export interface TeacherSummary {
 }
 
 export interface SubjectTotal {
-  subjectId: number
+  subjectId: string
   subjectName: string
   minutes: number
 }
@@ -107,7 +107,7 @@ interface TimelineData {
 }
 
 interface SlotAssignment {
-  subjectId: number
+  subjectId: string
   subjectName: string
   color: string
   teacherId: number
@@ -117,7 +117,7 @@ interface SlotAssignment {
 interface TeacherCapacity {
   teacher: TeacherData
   remainingBlocks: number
-  subjectIds: Set<number>
+  subjectIds: Set<string>
   courseIds: Set<number>
 }
 
@@ -326,7 +326,7 @@ function createTeacherCapacities(teachers: TeacherData[], blockDuration: number)
 
 // Función que selecciona al mejor profesor disponible para un bloque específico.
 function pickTeacher(
-  subjectId: number,
+  subjectId: string,
   courseId: number,
   teacherCapacities: Map<number, TeacherCapacity>,
   dayIndex: number,
@@ -392,14 +392,14 @@ function distributeCourse(
   teacherCapacities: Map<number, TeacherCapacity>,
   blockDuration: number,
   teacherMinutes: Map<number, number>,
-  teacherSubjectMinutes: Map<number, Map<number, number>>,
-  subjectTotals: Map<number, number>,
+  teacherSubjectMinutes: Map<number, Map<string, number>>,
+  subjectTotals: Map<string, number>,
   teacherAssignments: TeacherAssignmentMatrix
 ): { rows: PreviewRow[]; sessions: number; teacherSlots: TeacherSlotRecord[] } | { error: string } {
   const assignments: (SlotAssignment | null)[][] = timeline.classSlots.map((slots) =>
     Array.from({ length: slots.length }, () => null)
   )
-  const subjectDailyCounts = new Map<number, number[]>()
+  const subjectDailyCounts = new Map<string, number[]>()
   let sessions = 0
 
   const requirements = levelSubjects
@@ -495,7 +495,7 @@ function distributeCourse(
         const minutes = blockDuration
         const totalMinutes = teacherMinutes.get(teacherInfo.teacher.id) ?? 0
         teacherMinutes.set(teacherInfo.teacher.id, totalMinutes + minutes)
-        const perSubject = teacherSubjectMinutes.get(teacherInfo.teacher.id) ?? new Map<number, number>()
+        const perSubject = teacherSubjectMinutes.get(teacherInfo.teacher.id) ?? new Map<string, number>()
         perSubject.set(subject.id, (perSubject.get(subject.id) ?? 0) + minutes)
         teacherSubjectMinutes.set(teacherInfo.teacher.id, perSubject)
         subjectTotals.set(subject.id, (subjectTotals.get(subject.id) ?? 0) + minutes)
@@ -636,8 +636,8 @@ export function buildSchedulePreview(
   }
 
   const teacherMinutes = new Map<number, number>()
-  const teacherSubjectMinutes = new Map<number, Map<number, number>>()
-  const subjectTotals = new Map<number, number>()
+  const teacherSubjectMinutes = new Map<number, Map<string, number>>()
+  const subjectTotals = new Map<string, number>()
   const teacherAssignments: TeacherAssignmentMatrix = new Map()
   const teacherSlotRecords: TeacherSlotRecord[] = []
   let referenceTimeline: TimelineData | null = null
@@ -753,7 +753,7 @@ export function buildSchedulePreview(
   const administrativeMinutes = referenceTimeline.adminMinutes
   const teacherSummaries: TeacherSummary[] = levelTeachers.map((teacher, index) => {
     const classMinutes = teacherMinutes.get(teacher.id) ?? 0
-    const perSubject = teacherSubjectMinutes.get(teacher.id) ?? new Map<number, number>()
+    const perSubject = teacherSubjectMinutes.get(teacher.id) ?? new Map<string, number>()
     const subjectEntries = Array.from(perSubject.entries()).map(([subjectId, minutes]) => {
       const subjectName = levelSubjects.find((subject) => subject.id === subjectId)?.name ?? 'Asignatura'
       return { subject: subjectName, minutes }
