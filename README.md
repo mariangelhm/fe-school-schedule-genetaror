@@ -67,6 +67,25 @@ VITE_AUTH_URL=http://localhost:8080/auth
 
 Ajusta los valores según la URL expuesta por tu gateway o microservicio de autenticación.
 
+## Actualizar los clientes de servicios
+
+- Todos los servicios HTTP del frontend reutilizan el cliente Axios definido en
+  `frontend/src/services/httpClient.ts`. Ese archivo lee la variable
+  `VITE_API_BASE_URL`; si no existe, utiliza un valor por defecto. Para apuntar a
+  otro host o puerto basta con actualizar la variable de entorno o, en última
+  instancia, modificar el `baseURL` en ese archivo.
+- Cada mantenedor consume funciones específicas ubicadas en
+  `frontend/src/services/*Service.ts` (por ejemplo,
+  `subjectService.ts`, `courseService.ts`, etc.). Estas funciones encapsulan las
+  rutas (`GET`, `POST`, `PUT`, `DELETE`) y los tipos de datos que espera el
+  backend. Si necesitas agregar un nuevo endpoint, define allí una función que
+  use `httpClient` y expórtala.
+- Después de ajustar o crear un servicio, revisa el store
+  `frontend/src/store/useSchedulerData.ts` para sincronizar los cambios (por
+  ejemplo, llamar a la nueva función dentro de las acciones del mantenedor) y
+  luego ejecuta `npm run lint` para asegurarte de que el tipado y el estilo se
+  mantienen consistentes.
+
 ## Scripts disponibles
 
 Desde la carpeta `frontend/` puedes ejecutar:

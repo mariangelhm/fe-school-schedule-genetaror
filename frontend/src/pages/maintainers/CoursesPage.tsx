@@ -31,9 +31,20 @@ export function CoursesPage() {
   const addCourse = useSchedulerDataStore((state) => state.addCourse)
   const updateCourse = useSchedulerDataStore((state) => state.updateCourse)
   const removeCourse = useSchedulerDataStore((state) => state.removeCourse)
+  const loadFromServer = useSchedulerDataStore((state) => state.loadFromServer)
+  const courseStatus = useSchedulerDataStore((state) => state.resourceStatus.courses)
+  const coursesLoaded = useSchedulerDataStore((state) => state.loadedResources.courses)
+
+  useEffect(() => {
+    void loadFromServer({
+      force: true,
+      resources: ['courses', 'classrooms', 'teachers']
+    })
+  }, [loadFromServer])
 
   const levelMap = useMemo(() => new Map(levels.map((level) => [level.id, level.name])), [levels])
   const defaultLevelId = levels[0]?.id ?? DEFAULT_LEVEL_ID
+  const isLoadingCourses = courseStatus.loading || (!courseStatus.error && !coursesLoaded)
   const [draft, setDraft] = useState<CourseDraft>(() => buildCourseDraft(defaultLevelId, classrooms))
   const [editingId, setEditingId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -64,7 +75,7 @@ export function CoursesPage() {
     })
   }, [defaultLevelId, classrooms, mediaTeachers])
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     if (!draft.name.trim() || !draft.levelId || !draft.classroomId) {
       setError('Completa todos los campos obligatorios.')
@@ -91,7 +102,9 @@ export function CoursesPage() {
       classroomId: draft.classroomId
     }
 
-    const success = editingId ? updateCourse(editingId, payload) : addCourse(payload)
+    const success = await (editingId
+      ? updateCourse(editingId, payload)
+      : addCourse(payload))
     if (!success) {
       setError('El aula seleccionada ya está asignada a otro curso.')
       return
@@ -119,8 +132,8 @@ export function CoursesPage() {
     setError(null)
   }
 
-  const handleDelete = (id: number) => {
-    removeCourse(id)
+  const handleDelete = async (id: number) => {
+    await removeCourse(id)
     if (editingId === id) {
       handleCancel()
     }
@@ -144,43 +157,58 @@ export function CoursesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {courses.map((course) => {
-                const headTeacherName = teachers.find((teacher) => teacher.id === course.headTeacherId)?.name ?? 'Sin asignar'
-                const classroomName = classrooms.find((classroom) => classroom.id === course.classroomId)?.name ?? 'Sin aula'
-                return (
-                  <tr key={course.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
-                    <td className="px-4 py-3 font-medium">{course.name}</td>
-                    <td className="px-4 py-3">{levelMap.get(course.levelId) ?? course.levelId}</td>
-                    <td className="px-4 py-3">{course.levelId === 'media' ? headTeacherName : 'No aplica'}</td>
-                    <td className="px-4 py-3">{classroomName}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-3">
-                        <button
-                          className="text-sm text-slate-500 transition hover:text-brand"
-                          type="button"
-                          onClick={() => handleEdit(course)}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          className="text-sm text-rose-500 transition hover:text-rose-600"
-                          type="button"
-                          onClick={() => handleDelete(course.id)}
-                        >
-                          Eliminar
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-              {courses.length === 0 && (
+              {isLoadingCourses && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
+                    Cargando cursos...
+                  </td>
+                </tr>
+              )}
+              {!isLoadingCourses && courseStatus.error && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-6 text-center text-rose-500 dark:text-rose-400">
+                    {courseStatus.error}
+                  </td>
+                </tr>
+              )}
+              {!isLoadingCourses && !courseStatus.error && courses.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-6 text-center text-slate-500 dark:text-slate-400">
                     No hay cursos registrados.
                   </td>
                 </tr>
               )}
+              {!isLoadingCourses && !courseStatus.error &&
+                courses.map((course) => {
+                  const headTeacherName = teachers.find((teacher) => teacher.id === course.headTeacherId)?.name ?? 'Sin asignar'
+                  const classroomName = classrooms.find((classroom) => classroom.id === course.classroomId)?.name ?? 'Sin aula'
+                  return (
+                    <tr key={course.id} className="bg-white text-slate-700 dark:bg-slate-900/40 dark:text-slate-200">
+                      <td className="px-4 py-3 font-medium">{course.name}</td>
+                      <td className="px-4 py-3">{levelMap.get(course.levelId) ?? course.levelId}</td>
+                      <td className="px-4 py-3">{course.levelId === 'media' ? headTeacherName : 'No aplica'}</td>
+                      <td className="px-4 py-3">{classroomName}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex justify-end gap-3">
+                          <button
+                            className="text-sm text-slate-500 transition hover:text-brand"
+                            type="button"
+                            onClick={() => handleEdit(course)}
+                          >
+                            Editar
+                          </button>
+                          <button
+                            className="text-sm text-rose-500 transition hover:text-rose-600"
+                            type="button"
+                            onClick={() => handleDelete(course.id)}
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
             </tbody>
           </table>
         </div>
